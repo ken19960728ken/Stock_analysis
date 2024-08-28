@@ -53,6 +53,10 @@ def get_table(table):
     df = pd.DataFrame(a, columns=table_columns)
     return df
 
+
+#%%
 get_table(tables[6])
 
 
+
+# %%
