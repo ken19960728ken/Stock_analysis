@@ -16,3 +16,6 @@ dependencies = [
     "twstock>=1.4.0",
     "yfinance",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0.0"]
