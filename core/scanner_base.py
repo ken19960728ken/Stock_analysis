@@ -2,7 +2,8 @@ import abc
 
 from tqdm import tqdm
 
-from core.db import check_exists, dispose_engine
+from core.db import dispose_engine
+from core.local_index import all_indexed, close as close_index
 from core.logger import setup_logger
 
 logger = setup_logger("scanner_base")
@@ -12,8 +13,8 @@ class BaseScanner(abc.ABC):
     """Scanner 基底類別：主迴圈、進度條、Ctrl+C、斷點續傳"""
 
     name = "BaseScanner"
-    # 子類別設定此值以啟用斷點續傳（檢查的 DB table 名稱）
-    resume_table = None
+    # 子類別設定此值以啟用斷點續傳（檢查的 DB table 名稱列表）
+    resume_tables = []
 
     def scan(self):
         targets = self.get_targets()
@@ -24,18 +25,20 @@ class BaseScanner(abc.ABC):
         logger.info(f"[{self.name}] 開始掃描，共 {len(targets)} 檔...")
         logger.info("隨時按 Ctrl+C 可安全中斷")
 
+        MAX_CONSECUTIVE_FAILURES = 10
         pbar = tqdm(targets)
         success_count = 0
         skip_count = 0
         fail_count = 0
+        consecutive_fails = 0
 
         try:
             for target in pbar:
                 stock_id = self._get_stock_id(target)
                 pbar.set_description(f"{self.name} {stock_id}")
 
-                # 斷點續傳
-                if self.resume_table and check_exists(self.resume_table, stock_id):
+                # 斷點續傳：本地索引檢查
+                if self.resume_tables and all_indexed(self.resume_tables, stock_id):
                     skip_count += 1
                     continue
 
@@ -43,17 +46,29 @@ class BaseScanner(abc.ABC):
                     ok = self.fetch_one(target)
                     if ok:
                         success_count += 1
+                        consecutive_fails = 0
                     else:
                         fail_count += 1
+                        consecutive_fails += 1
                 except Exception as e:
                     logger.error(f"[{stock_id}] 失敗: {e}")
                     fail_count += 1
+                    consecutive_fails += 1
+
+                # 熔斷檢查
+                if consecutive_fails >= MAX_CONSECUTIVE_FAILURES:
+                    logger.error(
+                        f"連續 {consecutive_fails} 檔失敗，"
+                        "疑似 API 配額耗盡或系統性錯誤，自動中止。"
+                    )
+                    break
 
         except KeyboardInterrupt:
             pbar.close()
             logger.warning("收到中斷指令，正在安全退出...")
 
         finally:
+            close_index()
             dispose_engine()
             logger.info("==========================================")
             logger.info(f"[{self.name}] 任務結算")

@@ -17,12 +17,12 @@ class TestFundamentalScannerInitialization:
     """Test FundamentalScanner initialization and configuration"""
 
     def test_fundamental_scanner_instantiation(
-        self, mock_finmind_client, mock_rate_limiter, mock_yfinance
+        self, mock_finmind_client, mock_rate_limiter, mock_yfinance, mock_local_index
     ):
         """Test that FundamentalScanner can be instantiated with proper attributes"""
         scanner = FundamentalScanner()
         assert scanner.name == "FundamentalScanner"
-        assert scanner.resume_table == "financial_reports"
+        assert scanner.resume_tables == ["financial_reports", "dividend_history"]
         assert scanner.fm_loader is not None
         assert scanner.limiter is not None
         assert scanner.yahoo_limiter is not None
@@ -40,7 +40,7 @@ class TestFundamentalScannerInitialization:
         assert "TotalAssets" in FOCUS_METRICS
         assert "TotalEquity" in FOCUS_METRICS
 
-    def test_dual_rate_limiters(self, mock_finmind_client, mock_rate_limiter):
+    def test_dual_rate_limiters(self, mock_finmind_client, mock_rate_limiter, mock_local_index):
         """Test that scanner has separate limiters for FinMind and Yahoo"""
         scanner = FundamentalScanner()
         assert scanner.limiter is not None
@@ -59,6 +59,7 @@ class TestFundamentalScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
         sample_dividend_history_data,
@@ -82,6 +83,7 @@ class TestFundamentalScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
         sample_financial_statements_data,
     ):
@@ -102,6 +104,7 @@ class TestFundamentalScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
     ):
@@ -124,6 +127,7 @@ class TestFundamentalScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test fetch_one returns False when no data is fetched"""
@@ -150,6 +154,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
     ):
@@ -170,6 +175,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
     ):
@@ -189,6 +195,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that financial statements are filtered to FOCUS_METRICS"""
@@ -216,6 +223,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that dates are converted to date objects"""
@@ -241,6 +249,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that income and balance sheet data are combined"""
@@ -272,6 +281,7 @@ class TestFundamentalScannerFinancialStatements:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that None is returned when no data after filtering"""
@@ -300,6 +310,7 @@ class TestFundamentalScannerDividends:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_dividend_history_data,
     ):
@@ -324,6 +335,7 @@ class TestFundamentalScannerDividends:
         self,
         mock_finmind_client,
         mock_rate_limiter,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that None is returned for stocks with no dividends"""
@@ -341,6 +353,7 @@ class TestFundamentalScannerDividends:
         self,
         mock_finmind_client,
         mock_rate_limiter,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that dividend DataFrame has correct columns"""
@@ -362,6 +375,7 @@ class TestFundamentalScannerDividends:
         self,
         mock_finmind_client,
         mock_rate_limiter,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that stock_id is included in dividend DataFrame"""
@@ -380,6 +394,7 @@ class TestFundamentalScannerDividends:
         self,
         mock_finmind_client,
         mock_rate_limiter,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that Yahoo symbol format is correct (stock_id.TW)"""
@@ -406,6 +421,7 @@ class TestFundamentalScannerRateLimiting:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
     ):
@@ -431,6 +447,7 @@ class TestFundamentalScannerRateLimiting:
         self,
         mock_finmind_client,
         mock_rate_limiter,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that Yahoo rate limiter wait is called"""
@@ -458,10 +475,10 @@ class TestFundamentalScannerIntegration:
         scanner = FundamentalScanner()
         assert scanner.name == "FundamentalScanner"
 
-    def test_resume_table_attribute(self):
-        """Test that resume_table is set to financial_reports"""
+    def test_resume_tables_attribute(self):
+        """Test that resume_tables is set to financial_reports and dividend_history"""
         scanner = FundamentalScanner()
-        assert scanner.resume_table == "financial_reports"
+        assert scanner.resume_tables == ["financial_reports", "dividend_history"]
 
     def test_fetch_one_returns_true_on_any_success(
         self,
@@ -469,6 +486,7 @@ class TestFundamentalScannerIntegration:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_financial_statements_data,
     ):

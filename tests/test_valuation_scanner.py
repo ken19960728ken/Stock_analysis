@@ -17,12 +17,12 @@ class TestValuationScannerInitialization:
     """Test ValuationScanner initialization and configuration"""
 
     def test_valuation_scanner_instantiation(
-        self, mock_finmind_client, mock_rate_limiter
+        self, mock_finmind_client, mock_rate_limiter, mock_local_index
     ):
         """Test that ValuationScanner can be instantiated with proper attributes"""
         scanner = ValuationScanner()
         assert scanner.name == "ValuationScanner"
-        assert scanner.resume_table == "month_revenue"
+        assert scanner.resume_tables == [t[1] for t in VALUATION_DATASETS]
         assert scanner.fm_loader is not None
         assert scanner.limiter is not None
 
@@ -36,7 +36,7 @@ class TestValuationScannerInitialization:
         assert len(VALUATION_DATASETS) == 3
         dataset_names = [d[0] for d in VALUATION_DATASETS]
         assert "taiwan_stock_month_revenue" in dataset_names
-        assert "taiwan_stock_per" in dataset_names
+        assert "taiwan_stock_per_pbr" in dataset_names
         assert "taiwan_stock_market_value" in dataset_names
 
 
@@ -48,6 +48,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_revenue_data,
     ):
@@ -59,7 +60,7 @@ class TestValuationScannerFetchOne:
             sample_valuation_revenue_data
         )
         # Mock other datasets
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -71,6 +72,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
         sample_valuation_revenue_data,
     ):
@@ -79,7 +81,7 @@ class TestValuationScannerFetchOne:
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = (
             sample_valuation_revenue_data
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_dict)
@@ -90,6 +92,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_revenue_data,
         sample_valuation_per_data,
@@ -101,7 +104,7 @@ class TestValuationScannerFetchOne:
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = (
             sample_valuation_revenue_data
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = sample_valuation_per_data
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = sample_valuation_per_data
         scanner.fm_loader.taiwan_stock_market_value.return_value = (
             sample_valuation_market_value_data
         )
@@ -115,6 +118,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_revenue_data,
     ):
@@ -124,7 +128,7 @@ class TestValuationScannerFetchOne:
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = (
             sample_valuation_revenue_data
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -135,6 +139,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_per_data,
     ):
@@ -142,7 +147,7 @@ class TestValuationScannerFetchOne:
         scanner = ValuationScanner()
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = None
-        scanner.fm_loader.taiwan_stock_per.return_value = sample_valuation_per_data
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = sample_valuation_per_data
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -153,13 +158,14 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test fetch_one returns False when no data is fetched"""
         scanner = ValuationScanner()
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = None
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -170,13 +176,14 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test fetch_one handles empty DataFrames correctly"""
         scanner = ValuationScanner()
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = pd.DataFrame()
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -187,6 +194,7 @@ class TestValuationScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_per_data,
     ):
@@ -196,7 +204,7 @@ class TestValuationScannerFetchOne:
         scanner.fm_loader.taiwan_stock_month_revenue.side_effect = Exception(
             "API Error"
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = sample_valuation_per_data
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = sample_valuation_per_data
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -212,6 +220,7 @@ class TestValuationScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that date columns are converted to date objects"""
@@ -227,7 +236,7 @@ class TestValuationScannerDataTransformation:
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = (
             df_with_string_dates
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         scanner.fetch_one(sample_stock_id)
@@ -242,6 +251,7 @@ class TestValuationScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that monthly revenue data has expected structure"""
@@ -255,7 +265,7 @@ class TestValuationScannerDataTransformation:
         })
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = revenue_df
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -266,6 +276,7 @@ class TestValuationScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test P/E, P/B, dividend yield data structure"""
@@ -280,7 +291,7 @@ class TestValuationScannerDataTransformation:
         })
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = None
-        scanner.fm_loader.taiwan_stock_per.return_value = per_df
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = per_df
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
@@ -291,6 +302,7 @@ class TestValuationScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test market value data structure"""
@@ -304,7 +316,7 @@ class TestValuationScannerDataTransformation:
         })
 
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = None
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = market_value_df
 
         result = scanner.fetch_one(sample_stock_id)
@@ -315,7 +327,7 @@ class TestValuationScannerRateLimiting:
     """Test rate limiting behavior"""
 
     def test_rate_limiter_configuration(
-        self, mock_finmind_client, mock_rate_limiter
+        self, mock_finmind_client, mock_rate_limiter, mock_local_index
     ):
         """Test that rate limiter is configured for FinMind source"""
         scanner = ValuationScanner()
@@ -325,6 +337,7 @@ class TestValuationScannerRateLimiting:
         self,
         mock_finmind_client,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_revenue_data,
     ):
@@ -333,7 +346,7 @@ class TestValuationScannerRateLimiting:
         scanner.fm_loader.taiwan_stock_month_revenue.return_value = (
             sample_valuation_revenue_data
         )
-        scanner.fm_loader.taiwan_stock_per.return_value = None
+        scanner.fm_loader.taiwan_stock_per_pbr.return_value = None
         scanner.fm_loader.taiwan_stock_market_value.return_value = None
 
         # The wait method is a MagicMock with side_effect=None
@@ -341,24 +354,25 @@ class TestValuationScannerRateLimiting:
         assert hasattr(scanner.limiter, "wait")
         assert callable(scanner.limiter.wait)
 
-    def test_finmind_token_used(
+    def test_no_token_passed_to_api(
         self,
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_valuation_revenue_data,
     ):
-        """Test that FinMind token is properly initialized"""
+        """Test that token is not passed to API calls (handled by login_by_token)"""
         scanner = ValuationScanner()
-        assert scanner.fm_token is not None
+        assert not hasattr(scanner, "fm_token")
 
 
 class TestValuationScannerIntegration:
     """Integration tests for ValuationScanner"""
 
     def test_get_targets_returns_list(
-        self, mock_finmind_client, mock_rate_limiter, mock_stock_list
+        self, mock_finmind_client, mock_rate_limiter, mock_local_index, mock_stock_list
     ):
         """Test that get_targets returns list of stock IDs"""
         scanner = ValuationScanner()
@@ -372,8 +386,8 @@ class TestValuationScannerIntegration:
         assert hasattr(scanner, "name")
         assert scanner.name == "ValuationScanner"
 
-    def test_resume_table_attribute(self):
-        """Test that scanner has resume_table for checkpoint feature"""
+    def test_resume_tables_attribute(self):
+        """Test that scanner has resume_tables for checkpoint feature"""
         scanner = ValuationScanner()
-        assert hasattr(scanner, "resume_table")
-        assert scanner.resume_table == "month_revenue"
+        assert hasattr(scanner, "resume_tables")
+        assert scanner.resume_tables == [t[1] for t in VALUATION_DATASETS]

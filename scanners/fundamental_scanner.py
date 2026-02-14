@@ -8,7 +8,8 @@ import pandas as pd
 import yfinance as yf
 
 from core.db import save_to_db
-from core.finmind_client import get_fm_loader, get_fm_token
+from core.finmind_client import get_fm_loader
+from core.local_index import add_index, index_exists
 from core.logger import setup_logger
 from core.rate_limiter import RateLimiter
 from core.scanner_base import BaseScanner
@@ -32,11 +33,10 @@ START_DATE = "2020-01-01"
 
 class FundamentalScanner(BaseScanner):
     name = "FundamentalScanner"
-    resume_table = "financial_reports"
+    resume_tables = ["financial_reports", "dividend_history"]
 
     def __init__(self):
         self.fm_loader = get_fm_loader()
-        self.fm_token = get_fm_token()
         self.limiter = RateLimiter(source="finmind")
         self.yahoo_limiter = RateLimiter(source="yahoo")
 
@@ -45,18 +45,22 @@ class FundamentalScanner(BaseScanner):
         any_success = False
 
         # 1. 財務報表（損益表 + 資產負債表）
-        df_fin = self._fetch_financial_statements(stock_id)
-        if df_fin is not None:
-            if save_to_db(df_fin, "financial_reports"):
-                any_success = True
-        self.limiter.wait()
+        if not index_exists("financial_reports", stock_id):
+            df_fin = self._fetch_financial_statements(stock_id)
+            if df_fin is not None:
+                if save_to_db(df_fin, "financial_reports"):
+                    add_index("financial_reports", stock_id)
+                    any_success = True
+            self.limiter.wait()
 
         # 2. 股利（Yahoo Finance）
-        df_div = self._fetch_dividends(stock_id)
-        if df_div is not None:
-            if save_to_db(df_div, "dividend_history"):
-                any_success = True
-        self.yahoo_limiter.wait()
+        if not index_exists("dividend_history", stock_id):
+            df_div = self._fetch_dividends(stock_id)
+            if df_div is not None:
+                if save_to_db(df_div, "dividend_history"):
+                    add_index("dividend_history", stock_id)
+                    any_success = True
+            self.yahoo_limiter.wait()
 
         return any_success
 
@@ -65,12 +69,12 @@ class FundamentalScanner(BaseScanner):
         try:
             def _call_income():
                 return self.fm_loader.taiwan_stock_financial_statement(
-                    stock_id=stock_id, start_date=START_DATE, token=self.fm_token,
+                    stock_id=stock_id, start_date=START_DATE,
                 )
 
             def _call_balance():
                 return self.fm_loader.taiwan_stock_balance_sheet(
-                    stock_id=stock_id, start_date=START_DATE, token=self.fm_token,
+                    stock_id=stock_id, start_date=START_DATE,
                 )
 
             df_income = self.limiter.call_with_retry(_call_income)
@@ -128,7 +132,7 @@ if __name__ == "__main__":
         test_id = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else "2330"
         scanner = FundamentalScanner()
         scanner.get_targets = lambda: [test_id]
-        scanner.resume_table = None
+        scanner.resume_tables = []
         scanner.scan()
     else:
         FundamentalScanner().scan()

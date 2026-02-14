@@ -8,6 +8,7 @@ import pandas as pd
 import yfinance as yf
 
 from core.db import save_to_db
+from core.local_index import add_index, index_exists
 from core.rate_limiter import RateLimiter
 from core.scanner_base import BaseScanner
 from core.stock_list import get_all_stocks
@@ -15,7 +16,7 @@ from core.stock_list import get_all_stocks
 
 class PriceScanner(BaseScanner):
     name = "PriceScanner"
-    resume_table = "daily_price"
+    resume_tables = ["daily_price"]
 
     def __init__(self):
         self.limiter = RateLimiter(source="yahoo")
@@ -26,6 +27,9 @@ class PriceScanner(BaseScanner):
     def fetch_one(self, target):
         stock_id = target["stock_id"]
         ticker = target["yahoo_symbol"]
+
+        if index_exists("daily_price", stock_id):
+            return True
 
         df = yf.download(ticker, period="3y", progress=False, auto_adjust=False)
 
@@ -46,6 +50,8 @@ class PriceScanner(BaseScanner):
         save_df = df[[c for c in required_cols if c in df.columns]]
 
         ok = save_to_db(save_df, "daily_price", chunksize=1000)
+        if ok:
+            add_index("daily_price", stock_id)
         self.limiter.wait()
         return ok
 
@@ -58,7 +64,7 @@ if __name__ == "__main__":
         scanner.get_targets = lambda: [
             {"stock_id": test_id, "yahoo_symbol": f"{test_id}.TW", "name": test_id, "type": "股票"}
         ]
-        scanner.resume_table = None
+        scanner.resume_tables = []
         scanner.scan()
     else:
         PriceScanner().scan()

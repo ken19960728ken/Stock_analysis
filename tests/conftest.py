@@ -222,14 +222,6 @@ def mock_db_save(monkeypatch):
 
 
 @pytest.fixture
-def mock_db_check_exists(monkeypatch):
-    """Mock db.check_exists to always return False (no skip)"""
-    mock_fn = MagicMock(return_value=False)
-    monkeypatch.setattr("core.db.check_exists", mock_fn)
-    return mock_fn
-
-
-@pytest.fixture
 def mock_db_get_engine(monkeypatch, mock_engine):
     """Mock db.get_engine"""
     monkeypatch.setattr("core.db.get_engine", MagicMock(return_value=mock_engine))
@@ -241,6 +233,46 @@ def mock_db_dispose_engine(monkeypatch):
     mock_fn = MagicMock()
     monkeypatch.setattr("core.db.dispose_engine", mock_fn)
     return mock_fn
+
+
+# ============================================================================
+# Mock Local Index
+# ============================================================================
+
+@pytest.fixture
+def mock_local_index(monkeypatch):
+    """Mock local_index functions: index_exists returns False, add_index/all_indexed/close are no-ops"""
+    mock_index_exists = MagicMock(return_value=False)
+    mock_add_index = MagicMock()
+    mock_all_indexed = MagicMock(return_value=False)
+    mock_close = MagicMock()
+
+    # Patch at core module level
+    monkeypatch.setattr("core.local_index.index_exists", mock_index_exists)
+    monkeypatch.setattr("core.local_index.add_index", mock_add_index)
+    monkeypatch.setattr("core.local_index.all_indexed", mock_all_indexed)
+    monkeypatch.setattr("core.local_index.close", mock_close)
+
+    # Patch where scanner_base imports it
+    monkeypatch.setattr("core.scanner_base.all_indexed", mock_all_indexed)
+    monkeypatch.setattr("core.scanner_base.close_index", mock_close)
+
+    # Patch where scanners import it
+    for scanner_module in [
+        "scanners.chip_scanner",
+        "scanners.valuation_scanner",
+        "scanners.fundamental_scanner",
+        "scanners.price_scanner",
+    ]:
+        monkeypatch.setattr(f"{scanner_module}.index_exists", mock_index_exists)
+        monkeypatch.setattr(f"{scanner_module}.add_index", mock_add_index)
+
+    return {
+        "index_exists": mock_index_exists,
+        "add_index": mock_add_index,
+        "all_indexed": mock_all_indexed,
+        "close": mock_close,
+    }
 
 
 # ============================================================================
@@ -256,9 +288,9 @@ def mock_fm_loader():
     loader.taiwan_stock_shareholding = MagicMock(return_value=None)
     loader.taiwan_stock_holding_shares_per = MagicMock(return_value=None)
     loader.taiwan_stock_securities_lending = MagicMock(return_value=None)
-    loader.taiwan_stock_daily_short_sale_balances = MagicMock(return_value=None)
+    loader.taiwan_daily_short_sale_balances = MagicMock(return_value=None)
     loader.taiwan_stock_month_revenue = MagicMock(return_value=None)
-    loader.taiwan_stock_per = MagicMock(return_value=None)
+    loader.taiwan_stock_per_pbr = MagicMock(return_value=None)
     loader.taiwan_stock_market_value = MagicMock(return_value=None)
     loader.taiwan_stock_financial_statement = MagicMock(return_value=None)
     loader.taiwan_stock_balance_sheet = MagicMock(return_value=None)
@@ -283,24 +315,12 @@ def mock_finmind_client(monkeypatch, mock_fm_loader):
         lambda: mock_fm_loader,
     )
     monkeypatch.setattr(
-        "scanners.chip_scanner.get_fm_token",
-        lambda: "test-token",
-    )
-    monkeypatch.setattr(
         "scanners.valuation_scanner.get_fm_loader",
         lambda: mock_fm_loader,
     )
     monkeypatch.setattr(
-        "scanners.valuation_scanner.get_fm_token",
-        lambda: "test-token",
-    )
-    monkeypatch.setattr(
         "scanners.fundamental_scanner.get_fm_loader",
         lambda: mock_fm_loader,
-    )
-    monkeypatch.setattr(
-        "scanners.fundamental_scanner.get_fm_token",
-        lambda: "test-token",
     )
     return mock_fm_loader
 
@@ -429,7 +449,7 @@ def mock_stock_list(monkeypatch, sample_stock_id):
 @pytest.fixture
 def setup_scanner_mocks(
     mock_db_save,
-    mock_db_check_exists,
+    mock_local_index,
     mock_db_dispose_engine,
     mock_finmind_client,
     mock_rate_limiter,
@@ -439,6 +459,6 @@ def setup_scanner_mocks(
     """Setup all necessary mocks for scanner tests"""
     return {
         "save_to_db": mock_db_save,
-        "check_exists": mock_db_check_exists,
+        "local_index": mock_local_index,
         "dispose_engine": mock_db_dispose_engine,
     }

@@ -7,6 +7,7 @@ Usage:
     python main.py --scanner chip           # 籌碼面資料
     python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
     python main.py --scanner all            # 依序執行全部
+    python main.py --init-index             # 從遠端 DB 初始化本地索引
 """
 import argparse
 import sys
@@ -41,15 +42,37 @@ def run_scanner(name):
     scanner_cls().scan()
 
 
+def run_init_index():
+    """從遠端 DB 初始化本地 SQLite 索引"""
+    from core.local_index import close, init_from_remote
+    try:
+        print("正在從遠端 DB 初始化本地索引...")
+        init_from_remote()
+        print("本地索引初始化完成。")
+    finally:
+        close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="台灣股市量化交易系統 — 資料撈取")
     parser.add_argument(
         "--scanner",
         choices=list(SCANNER_MAP.keys()) + ["all"],
-        required=True,
         help="選擇要執行的 scanner (price/fundamental/chip/valuation/all)",
     )
+    parser.add_argument(
+        "--init-index",
+        action="store_true",
+        help="從遠端 DB 初始化本地 SQLite 索引（首次使用或換電腦時執行）",
+    )
     args = parser.parse_args()
+
+    if args.init_index:
+        run_init_index()
+        return
+
+    if not args.scanner:
+        parser.error("請指定 --scanner 或 --init-index")
 
     if args.scanner == "all":
         for name in RUN_ORDER:

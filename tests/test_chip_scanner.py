@@ -16,13 +16,14 @@ from scanners.chip_scanner import ChipScanner, CHIP_DATASETS
 class TestChipScannerInitialization:
     """Test ChipScanner initialization and configuration"""
 
-    def test_chip_scanner_instantiation(self, mock_finmind_client, mock_rate_limiter):
+    def test_chip_scanner_instantiation(self, mock_finmind_client, mock_rate_limiter, mock_local_index):
         """Test that ChipScanner can be instantiated with proper attributes"""
         scanner = ChipScanner()
         assert scanner.name == "ChipScanner"
-        assert scanner.resume_table == "chip_institutional"
+        assert scanner.resume_tables == [t[1] for t in CHIP_DATASETS]
         assert scanner.fm_loader is not None
         assert scanner.limiter is not None
+        assert not hasattr(scanner, "fm_token")
 
     def test_chip_scanner_inherits_from_base(self):
         """Test that ChipScanner inherits from BaseScanner"""
@@ -38,7 +39,7 @@ class TestChipScannerInitialization:
         assert "taiwan_stock_shareholding" in dataset_names
         assert "taiwan_stock_holding_shares_per" in dataset_names
         assert "taiwan_stock_securities_lending" in dataset_names
-        assert "taiwan_stock_daily_short_sale_balances" in dataset_names
+        assert "taiwan_daily_short_sale_balances" in dataset_names
 
 
 class TestChipScannerFetchOne:
@@ -49,6 +50,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
     ):
@@ -65,7 +67,7 @@ class TestChipScannerFetchOne:
         scanner.fm_loader.taiwan_stock_shareholding.return_value = None
         scanner.fm_loader.taiwan_stock_holding_shares_per.return_value = None
         scanner.fm_loader.taiwan_stock_securities_lending.return_value = None
-        scanner.fm_loader.taiwan_stock_daily_short_sale_balances.return_value = None
+        scanner.fm_loader.taiwan_daily_short_sale_balances.return_value = None
 
         result = scanner.fetch_one(sample_stock_id)
         assert result is True
@@ -76,6 +78,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
         sample_chip_institutional_data,
     ):
@@ -91,7 +94,7 @@ class TestChipScannerFetchOne:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -103,6 +106,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
         sample_chip_margin_data,
@@ -135,7 +139,7 @@ class TestChipScannerFetchOne:
                 "securities_balance": [100000],
             }
         )
-        scanner.fm_loader.taiwan_stock_daily_short_sale_balances.return_value = (
+        scanner.fm_loader.taiwan_daily_short_sale_balances.return_value = (
             pd.DataFrame(
                 {
                     "date": [datetime.date(2023, 1, 1)],
@@ -154,6 +158,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
     ):
@@ -170,7 +175,7 @@ class TestChipScannerFetchOne:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -182,6 +187,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test fetch_one returns False when no data is fetched"""
@@ -194,7 +200,7 @@ class TestChipScannerFetchOne:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -206,6 +212,7 @@ class TestChipScannerFetchOne:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
     ):
@@ -225,7 +232,7 @@ class TestChipScannerFetchOne:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -242,6 +249,7 @@ class TestChipScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test that date columns are converted to date objects"""
@@ -264,7 +272,7 @@ class TestChipScannerDataTransformation:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -282,6 +290,7 @@ class TestChipScannerDataTransformation:
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test handling of empty DataFrames"""
@@ -298,7 +307,7 @@ class TestChipScannerDataTransformation:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -313,6 +322,7 @@ class TestChipScannerRateLimiting:
         self,
         mock_finmind_client,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
     ):
@@ -327,7 +337,7 @@ class TestChipScannerRateLimiting:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
@@ -336,15 +346,16 @@ class TestChipScannerRateLimiting:
         assert hasattr(scanner.limiter, "wait")
         assert callable(scanner.limiter.wait)
 
-    def test_finmind_token_passed_to_api(
+    def test_no_token_passed_to_api(
         self,
         mock_finmind_client,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
         sample_chip_institutional_data,
     ):
-        """Test that FinMind token is passed to API calls"""
+        """Test that token is not passed to API calls (handled by login_by_token)"""
         scanner = ChipScanner()
         scanner.fm_loader.taiwan_stock_institutional_investors.return_value = (
             sample_chip_institutional_data
@@ -355,23 +366,24 @@ class TestChipScannerRateLimiting:
             "taiwan_stock_shareholding",
             "taiwan_stock_holding_shares_per",
             "taiwan_stock_securities_lending",
-            "taiwan_stock_daily_short_sale_balances",
+            "taiwan_daily_short_sale_balances",
         ]:
             getattr(scanner.fm_loader, method_name).return_value = None
 
         scanner.fetch_one(sample_stock_id)
 
-        # Verify token was set
-        assert scanner.fm_token is not None
+        # Verify token is NOT passed as parameter (auth handled by login_by_token)
+        call_kwargs = scanner.fm_loader.taiwan_stock_institutional_investors.call_args
+        assert "token" not in (call_kwargs.kwargs if call_kwargs else {})
 
 
 class TestChipScannerIntegration:
     """Integration tests for ChipScanner"""
 
-    def test_scanner_has_resume_table(self):
-        """Test that ChipScanner has resume_table for checkpoint feature"""
+    def test_scanner_has_resume_tables(self):
+        """Test that ChipScanner has resume_tables for checkpoint feature"""
         scanner = ChipScanner()
-        assert scanner.resume_table == "chip_institutional"
+        assert scanner.resume_tables == [t[1] for t in CHIP_DATASETS]
 
     def test_scanner_inherits_scan_method(self):
         """Test that ChipScanner inherits scan() method from BaseScanner"""

@@ -16,11 +16,11 @@ from scanners.price_scanner import PriceScanner
 class TestPriceScannerInitialization:
     """Test PriceScanner initialization and configuration"""
 
-    def test_price_scanner_instantiation(self, mock_rate_limiter):
+    def test_price_scanner_instantiation(self, mock_rate_limiter, mock_local_index):
         """Test that PriceScanner can be instantiated with proper attributes"""
         scanner = PriceScanner()
         assert scanner.name == "PriceScanner"
-        assert scanner.resume_table == "daily_price"
+        assert scanner.resume_tables == ["daily_price"]
         assert scanner.limiter is not None
 
     def test_price_scanner_inherits_from_base(self):
@@ -28,7 +28,7 @@ class TestPriceScannerInitialization:
         from core.scanner_base import BaseScanner
         assert issubclass(PriceScanner, BaseScanner)
 
-    def test_price_scanner_uses_yahoo_rate_limiter(self, mock_rate_limiter):
+    def test_price_scanner_uses_yahoo_rate_limiter(self, mock_rate_limiter, mock_local_index):
         """Test that PriceScanner uses Yahoo Finance rate limiter"""
         scanner = PriceScanner()
         assert scanner.limiter is not None
@@ -38,7 +38,7 @@ class TestPriceScannerGetTargets:
     """Test get_targets method which retrieves stock list"""
 
     def test_get_targets_returns_list(
-        self, mock_rate_limiter, mock_stock_list, sample_stock_dict
+        self, mock_rate_limiter, mock_local_index, mock_stock_list, sample_stock_dict
     ):
         """Test that get_targets returns list of stock dicts"""
         scanner = PriceScanner()
@@ -50,7 +50,7 @@ class TestPriceScannerGetTargets:
         assert "yahoo_symbol" in targets[0]
 
     def test_get_targets_includes_stock_id_and_yahoo_symbol(
-        self, mock_rate_limiter, mock_stock_list
+        self, mock_rate_limiter, mock_local_index, mock_stock_list
     ):
         """Test that targets have required fields"""
         scanner = PriceScanner()
@@ -70,6 +70,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test successful fetch_one with valid stock data"""
@@ -83,6 +84,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_id,
     ):
         """Test fetch_one with string stock_id (extracts stock_id)"""
@@ -102,6 +104,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that downloaded columns are properly renamed to lowercase"""
@@ -122,6 +125,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that stock_id is added to DataFrame"""
@@ -138,6 +142,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that date column is converted to date objects"""
@@ -155,6 +160,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that only required OHLCV columns are saved"""
@@ -176,6 +182,7 @@ class TestPriceScannerFetchOne:
         self,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test fetch_one returns False when no data is returned"""
@@ -191,6 +198,7 @@ class TestPriceScannerFetchOne:
         self,
         mock_rate_limiter,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test fetch_one handles MultiIndex columns from yfinance"""
@@ -220,6 +228,7 @@ class TestPriceScannerFetchOne:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that save_to_db is called with chunksize=1000"""
@@ -240,6 +249,7 @@ class TestPriceScannerDataTransformation:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that OHLCV data has expected structure"""
@@ -258,6 +268,7 @@ class TestPriceScannerDataTransformation:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that volume data is preserved"""
@@ -277,6 +288,7 @@ class TestPriceScannerDataTransformation:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that price columns are numeric"""
@@ -301,6 +313,7 @@ class TestPriceScannerRateLimiting:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that rate limiter wait is called after each stock"""
@@ -310,7 +323,7 @@ class TestPriceScannerRateLimiting:
         # Verify wait was called
         assert scanner.limiter.wait.called
 
-    def test_rate_limiter_source_is_yahoo(self):
+    def test_rate_limiter_source_is_yahoo(self, mock_local_index):
         """Test that rate limiter is configured for Yahoo source"""
         scanner = PriceScanner()
         # Limiter should be created with source="yahoo"
@@ -320,10 +333,10 @@ class TestPriceScannerRateLimiting:
 class TestPriceScannerIntegration:
     """Integration tests for PriceScanner"""
 
-    def test_resume_table_set_correctly(self):
-        """Test that resume_table is set to daily_price"""
+    def test_resume_tables_set_correctly(self):
+        """Test that resume_tables is set to daily_price"""
         scanner = PriceScanner()
-        assert scanner.resume_table == "daily_price"
+        assert scanner.resume_tables == ["daily_price"]
 
     def test_scanner_name_attribute(self):
         """Test that scanner has correct name"""
@@ -335,6 +348,7 @@ class TestPriceScannerIntegration:
         mock_rate_limiter,
         mock_yfinance,
         mock_db_save,
+        mock_local_index,
         sample_stock_dict,
     ):
         """Test that yfinance.download is called with period='3y'"""
