@@ -33,16 +33,13 @@ python -m scanners.chip_scanner                   # 籌碼面
 python -m scanners.chip_scanner --test 2330       # 測試單支
 python -m scanners.valuation_scanner              # 估值面
 
-# === 其他獨立腳本 ===
-python append_stock_codes.py     # 初始化商品代碼至 SQLite
-python nn_predict.py             # PyTorch 價格預測模型
 ```
 
 No test suite exists. No linter is configured.
 
 ## Architecture
 
-**Data flow**: External APIs → Python scripts → Supabase PostgreSQL (+ local SQLite for stock codes)
+**Data flow**: External APIs → Python scripts → Supabase PostgreSQL
 
 ### 共用模組 `core/`
 
@@ -62,11 +59,6 @@ No test suite exists. No linter is configured.
 | `fundamental_scanner.py` | FinMind + Yahoo | `financial_reports`, `dividend_history` |
 | `chip_scanner.py` | FinMind | `chip_institutional`, `chip_margin`, `chip_shareholding`, `chip_holding_pct`, `chip_securities_lending`, `chip_short_sale` |
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
-
-### Part 2: 分析、策略與回測
-
-- **`nn_predict.py`** — PyTorch 3 層 MLP (12→24→12→1)，以半導體股歷史資料訓練。特徵：OHLC、漲跌幅、5/10/20 日均線、動量、K 線型態。含線性回歸基準模型。
-- 量化策略與回測腳本持續開發中。
 
 ### Database Tables (Supabase)
 
@@ -89,7 +81,6 @@ No test suite exists. No linter is configured.
 ### Configuration
 
 - **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits).
-- **`configs/constants.py`** — DB connection string template (placeholder, actual connection uses `.env`).
 - **Python 3.11** required (`.python-version` and `pyproject.toml`).
 
 ## Key Patterns
