@@ -51,6 +51,8 @@ class BaseScanner(abc.ABC):
                     else:
                         fail_count += 1
                         consecutive_fails += 1
+                except BudgetExhaustedError:
+                    raise
                 except Exception as e:
                     logger.error(f"[{stock_id}] 失敗: {e}")
                     fail_count += 1
