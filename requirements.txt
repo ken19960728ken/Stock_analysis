@@ -1,0 +1,10 @@
+finmind==1.9.5
+lxml==6.0.2
+pandas==3.0.0
+psycopg2-binary==2.9.11
+python-dotenv==1.2.1
+requests==2.32.5
+sqlalchemy==2.0.46
+tqdm==4.67.3
+twstock==1.4.0
+yfinance==1.1.0
