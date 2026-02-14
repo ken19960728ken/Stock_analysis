@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Scanner Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+  header { background: #1e293b; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  .header-actions { display: flex; gap: 12px; align-items: center; }
+  .header-actions button { background: #334155; color: #e2e8f0; border: 1px solid #475569; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .header-actions button:hover { background: #475569; }
+  .header-actions button.active { background: #3b82f6; border-color: #3b82f6; }
+  .header-actions .status { font-size: 12px; color: #94a3b8; }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  section { margin-bottom: 32px; }
+  section h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Chart grid */
+  .chart-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  @media (max-width: 1200px) { .chart-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 768px) { .chart-grid { grid-template-columns: repeat(3, 1fr); } }
+  .chart-card { background: #1e293b; border-radius: 10px; padding: 16px; text-align: center; border: 1px solid #334155; }
+  .chart-card h3 { font-size: 11px; color: #94a3b8; margin-bottom: 8px; word-break: break-all; font-family: monospace; }
+  .chart-card .chart-wrap { width: 120px; height: 120px; margin: 0 auto; position: relative; }
+  .chart-card .pct-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: 700; }
+  .chart-card .count { font-size: 12px; color: #64748b; margin-top: 6px; }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar input { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; font-size: 13px; width: 220px; }
+  .toolbar input::placeholder { color: #64748b; }
+  .filter-btns { display: flex; gap: 4px; }
+  .filter-btns button { background: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .filter-btns button.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+
+  /* Table */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #1e293b; position: sticky; top: 0; padding: 10px 8px; text-align: left; color: #94a3b8; font-weight: 500; border-bottom: 2px solid #334155; white-space: nowrap; }
+  tbody td { padding: 8px; border-bottom: 1px solid #1e293b; white-space: nowrap; }
+  tbody tr:hover { background: #1e293b; }
+  .cell-ok { color: #22c55e; text-align: center; }
+  .cell-no { color: #475569; text-align: center; }
+  .cell-progress { text-align: center; }
+  .progress-bar { display: inline-block; width: 60px; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .progress-bar-fill { height: 100%; border-radius: 3px; }
+
+  .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 13px; color: #94a3b8; }
+  .pagination button { background: #334155; color: #e2e8f0; border: 1px solid #475569; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+
+  /* Failures table */
+  .err-msg { max-width: 400px; overflow: hidden; text-overflow: ellipsis; color: #f87171; font-family: monospace; font-size: 12px; }
+  .empty-state { text-align: center; padding: 40px; color: #64748b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Stock Scanner Dashboard</h1>
+  <div class="header-actions">
+    <span class="status" id="lastUpdate"></span>
+    <button onclick="refresh()">Refresh</button>
+    <button id="autoBtn" onclick="toggleAuto()">Auto 30s</button>
+  </div>
+</header>
+
+<main>
+  <!-- Section 1: Doughnut charts -->
+  <section>
+    <h2>Table Completion</h2>
+    <div class="chart-grid" id="chartGrid"></div>
+  </section>
+
+  <!-- Section 2: Stock matrix -->
+  <section>
+    <h2>Stock Status</h2>
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Search stock code or name..." oninput="applyFilter()">
+      <div class="filter-btns">
+        <button class="active" data-filter="all" onclick="setFilter('all',this)">All</button>
+        <button data-filter="done" onclick="setFilter('done',this)">Done</button>
+        <button data-filter="partial" onclick="setFilter('partial',this)">Partial</button>
+        <button data-filter="none" onclick="setFilter('none',this)">None</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead id="stockHead"></thead>
+        <tbody id="stockBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <span id="pageInfo"></span>
+      <div>
+        <button id="prevBtn" onclick="changePage(-1)">Prev</button>
+        <button id="nextBtn" onclick="changePage(1)">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Failures -->
+  <section>
+    <h2>Failure Log</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Name</th><th>Table</th><th>Error</th><th>Time</th></tr>
+        </thead>
+        <tbody id="failBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const TABLE_DISPLAY = {
+  daily_price: "daily_price", financial_reports: "financial_reports",
+  dividend_history: "dividend_history", chip_institutional: "chip_institutional",
+  chip_margin: "chip_margin", chip_shareholding: "chip_shareholding",
+  chip_holding_pct: "chip_holding_pct", chip_securities_lending: "chip_securities_lending",
+  chip_short_sale: "chip_short_sale", month_revenue: "month_revenue",
+  stock_per: "stock_per", market_value: "market_value"
+};
+
+let allStocks = [], tableNames = [], filteredStocks = [];
+let currentPage = 0, pageSize = 50;
+let autoInterval = null, autoOn = true;
+let charts = {};
+
+// --- Data fetching ---
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+async function refresh() {
+  document.getElementById("lastUpdate").textContent = "Loading...";
+  try {
+    const [statsData, stocksData, failData] = await Promise.all([
+      fetchJSON("/api/stats"),
+      fetchJSON("/api/stocks"),
+      fetchJSON("/api/failures")
+    ]);
+    renderCharts(statsData);
+    allStocks = stocksData.stocks;
+    tableNames = stocksData.table_names;
+    applyFilter();
+    renderFailures(failData);
+    document.getElementById("lastUpdate").textContent = "Updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("lastUpdate").textContent = "Error: " + e.message;
+  }
+}
+
+// --- Charts ---
+function renderCharts(data) {
+  const grid = document.getElementById("chartGrid");
+  if (!grid.children.length) {
+    grid.innerHTML = "";
+    data.stats.forEach(s => {
+      const div = document.createElement("div");
+      div.className = "chart-card";
+      div.innerHTML = `
+        <h3>${TABLE_DISPLAY[s.table_name] || s.table_name}</h3>
+        <div class="chart-wrap">
+          <canvas id="chart-${s.table_name}"></canvas>
+          <span class="pct-label" id="pct-${s.table_name}"></span>
+        </div>
+        <div class="count" id="cnt-${s.table_name}"></div>`;
+      grid.appendChild(div);
+    });
+  }
+
+  data.stats.forEach(s => {
+    const pctEl = document.getElementById("pct-" + s.table_name);
+    const cntEl = document.getElementById("cnt-" + s.table_name);
+    pctEl.textContent = s.pct + "%";
+    pctEl.style.color = s.pct >= 100 ? "#22c55e" : s.pct > 0 ? "#facc15" : "#64748b";
+    cntEl.textContent = s.completed + " / " + (s.completed + s.remaining);
+
+    if (charts[s.table_name]) {
+      charts[s.table_name].data.datasets[0].data = [s.completed, s.remaining];
+      charts[s.table_name].update();
+    } else {
+      const ctx = document.getElementById("chart-" + s.table_name).getContext("2d");
+      charts[s.table_name] = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: ["Done", "Remaining"],
+          datasets: [{
+            data: [s.completed, s.remaining],
+            backgroundColor: ["#22c55e", "#334155"],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          cutout: "70%",
+          plugins: { legend: { display: false }, tooltip: { enabled: true } },
+          responsive: true,
+          maintainAspectRatio: true,
+          animation: { duration: 400 }
+        }
+      });
+    }
+  });
+}
+
+// --- Stock table ---
+function buildHead() {
+  const tr = document.createElement("tr");
+  tr.innerHTML = "<th>Code</th><th>Name</th>" +
+    tableNames.map(t => `<th style="text-align:center">${TABLE_DISPLAY[t] || t}</th>`).join("") +
+    "<th style='text-align:center'>Progress</th>";
+  document.getElementById("stockHead").innerHTML = "";
+  document.getElementById("stockHead").appendChild(tr);
+}
+
+function renderStockPage() {
+  buildHead();
+  const start = currentPage * pageSize;
+  const page = filteredStocks.slice(start, start + pageSize);
+  const tbody = document.getElementById("stockBody");
+  tbody.innerHTML = "";
+
+  page.forEach(s => {
+    const tr = document.createElement("tr");
+    const pct = s.total > 0 ? Math.round(s.completed / s.total * 100) : 0;
+    const color = pct >= 100 ? "#22c55e" : pct > 0 ? "#3b82f6" : "#334155";
+    let cells = `<td>${s.stock_id}</td><td>${s.name}</td>`;
+    tableNames.forEach(t => {
+      cells += s.tables[t]
+        ? '<td class="cell-ok">&#10003;</td>'
+        : '<td class="cell-no">&#10005;</td>';
+    });
+    cells += `<td class="cell-progress">
+      <span class="progress-bar"><span class="progress-bar-fill" style="width:${pct}%;background:${color}"></span></span>
+      ${s.completed}/${s.total}</td>`;
+    tr.innerHTML = cells;
+    tbody.appendChild(tr);
+  });
+
+  const total = filteredStocks.length;
+  const end = Math.min(start + pageSize, total);
+  document.getElementById("pageInfo").textContent = total ? `Showing ${start + 1}-${end} of ${total}` : "No results";
+  document.getElementById("prevBtn").disabled = currentPage === 0;
+  document.getElementById("nextBtn").disabled = end >= total;
+}
+
+let currentFilterMode = "all";
+
+function setFilter(mode, btn) {
+  currentFilterMode = mode;
+  document.querySelectorAll(".filter-btns button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  applyFilter();
+}
+
+function applyFilter() {
+  const q = document.getElementById("searchInput").value.toLowerCase().trim();
+  filteredStocks = allStocks.filter(s => {
+    if (q && !s.stock_id.includes(q) && !s.name.toLowerCase().includes(q)) return false;
+    if (currentFilterMode === "done") return s.completed === s.total;
+    if (currentFilterMode === "partial") return s.completed > 0 && s.completed < s.total;
+    if (currentFilterMode === "none") return s.completed === 0;
+    return true;
+  });
+  currentPage = 0;
+  renderStockPage();
+}
+
+function changePage(delta) {
+  currentPage += delta;
+  renderStockPage();
+}
+
+// --- Failures ---
+function renderFailures(data) {
+  const tbody = document.getElementById("failBody");
+  if (!data.failures.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No failures recorded</td></tr>';
+    return;
+  }
+  tbody.innerHTML = "";
+  data.failures.forEach(f => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${f.stock_id}</td><td>${f.name}</td><td>${f.table_name}</td>
+      <td class="err-msg" title="${f.error_msg.replace(/"/g, '&quot;')}">${f.error_msg}</td>
+      <td>${f.failed_at}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// --- Auto refresh ---
+function toggleAuto() {
+  autoOn = !autoOn;
+  const btn = document.getElementById("autoBtn");
+  if (autoOn) {
+    btn.classList.add("active");
+    btn.textContent = "Auto 30s";
+    startAuto();
+  } else {
+    btn.classList.remove("active");
+    btn.textContent = "Auto Off";
+    if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+  }
+}
+
+function startAuto() {
+  if (autoInterval) clearInterval(autoInterval);
+  autoInterval = setInterval(refresh, 30000);
+}
+
+// --- Init ---
+document.getElementById("autoBtn").classList.add("active");
+refresh();
+startAuto();
+</script>
+</body>
+</html>

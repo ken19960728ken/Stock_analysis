@@ -2,15 +2,19 @@
 台灣股市量化交易系統 — 統一入口
 
 Usage:
-    python main.py --scanner price          # 日K價格資料
+    python main.py --scanner price          # 日K價格資料（Yahoo Finance）
     python main.py --scanner fundamental    # 財務報表 + 股利
     python main.py --scanner chip           # 籌碼面資料
     python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
-    python main.py --scanner all            # 依序執行全部
+    python main.py --scanner all            # Yahoo 先跑，再跑 FinMind（受預算控制）
     python main.py --init-index             # 從遠端 DB 初始化本地索引
     python main.py --usage                  # 查詢 FinMind API 使用量
     python main.py --scanner chip --budget 50   # 限制 FinMind API 預算
     python main.py --schedule               # 排程模式：每小時自動循環
+    python main.py --show-failures          # 顯示各 dataset 失敗統計
+    python main.py --reset-failures         # 清除全部失敗記錄
+    python main.py --reset-failures market_value  # 清除指定 dataset 失敗記錄
+    python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
 """
 import argparse
 import sys
@@ -28,7 +32,10 @@ SCANNER_MAP = {
     "valuation": ("scanners.valuation_scanner", "ValuationScanner"),
 }
 
-RUN_ORDER = ["price", "fundamental", "chip", "valuation"]
+# 來源分流：Yahoo 不受 FinMind 配額限制
+YAHOO_SCANNERS = ["price"]
+FINMIND_SCANNERS = ["fundamental", "chip", "valuation"]
+FINMIND_RUN_ORDER = ["fundamental", "chip", "valuation"]
 
 
 def run_scanner(name):
@@ -75,6 +82,41 @@ def run_usage():
     print(f"  剩餘:   {remaining} 次")
 
 
+def run_dashboard(host="0.0.0.0", port=8050):
+    """啟動監控儀表板"""
+    import uvicorn
+    from dashboard.app import app
+
+    logger.info(f"啟動 Dashboard: http://localhost:{port}")
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+def run_show_failures():
+    """顯示各 dataset 失敗統計"""
+    from core.local_index import get_failure_summary
+    summary = get_failure_summary()
+    if not summary:
+        print("目前沒有失敗記錄。")
+        return
+    print("失敗記錄統計:")
+    total = 0
+    for table_name, count in summary:
+        print(f"  {table_name}: {count} 筆")
+        total += count
+    print(f"  共計: {total} 筆")
+
+
+def run_reset_failures(table_name=None):
+    """清除失敗記錄"""
+    from core.local_index import clear_failures
+    if table_name:
+        clear_failures(table_name)
+        print(f"已清除 {table_name} 的失敗記錄。")
+    else:
+        clear_failures()
+        print("已清除全部失敗記錄。")
+
+
 def run_schedule():
     """排程模式：每小時自動循環執行所有 scanner"""
     from core.finmind_client import get_api_usage
@@ -86,7 +128,11 @@ def run_schedule():
         now = datetime.now()
         logger.info(f"=== 排程週期開始: {now.strftime('%Y-%m-%d %H:%M:%S')} ===")
 
-        # 1. 查詢剩餘配額
+        # 1. Yahoo scanner 先跑（不受配額影響）
+        for name in YAHOO_SCANNERS:
+            run_scanner(name)
+
+        # 2. 查詢剩餘配額
         user_count, api_request_limit = get_api_usage()
         if user_count is not None:
             remaining = api_request_limit - user_count
@@ -94,16 +140,15 @@ def run_schedule():
                 f"FinMind API: 已用 {user_count}/{api_request_limit}，"
                 f"剩餘 {remaining} 次"
             )
-            # 2. 設定預算
             set_budget(remaining)
         else:
             logger.warning("無法查詢 API 使用量，本輪不設定預算限制")
 
-        # 3. 依序執行 scanner
-        for name in RUN_ORDER:
+        # 3. FinMind scanners（受預算控制）
+        for name in FINMIND_RUN_ORDER:
             budget = get_budget_remaining()
             if budget is not None and budget <= 0:
-                logger.info("預算已用盡，跳過剩餘 scanner")
+                logger.info("預算已用盡，跳過剩餘 FinMind scanner")
                 break
             run_scanner(name)
 
@@ -156,9 +201,42 @@ def main():
         action="store_true",
         help="排程模式：每小時自動循環執行所有 scanner",
     )
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="啟動監控儀表板 (http://localhost:8050)",
+    )
+    parser.add_argument(
+        "--show-failures",
+        action="store_true",
+        help="顯示各 dataset 失敗統計",
+    )
+    parser.add_argument(
+        "--reset-failures",
+        nargs="?",
+        const="__all__",
+        metavar="TABLE_NAME",
+        help="清除失敗記錄（不指定表名則清除全部）",
+    )
     args = parser.parse_args()
 
-    # --usage：獨立功能，直接執行後返回
+    # --dashboard：獨立功能
+    if args.dashboard:
+        run_dashboard()
+        return
+
+    # --show-failures：獨立功能
+    if args.show_failures:
+        run_show_failures()
+        return
+
+    # --reset-failures：獨立功能
+    if args.reset_failures is not None:
+        table_name = None if args.reset_failures == "__all__" else args.reset_failures
+        run_reset_failures(table_name)
+        return
+
+    # --usage：獨立功能
     if args.usage:
         run_usage()
         return
@@ -189,10 +267,14 @@ def main():
 
     if args.scanner == "all":
         from core.rate_limiter import get_budget_remaining
-        for name in RUN_ORDER:
+        # 1. Yahoo scanners 先跑（不受預算控制）
+        for name in YAHOO_SCANNERS:
+            run_scanner(name)
+        # 2. FinMind scanners（受預算控制）
+        for name in FINMIND_RUN_ORDER:
             budget = get_budget_remaining()
             if budget is not None and budget <= 0:
-                logger.info("預算已用盡，跳過剩餘 scanner")
+                logger.info("預算已用盡，跳過剩餘 FinMind scanner")
                 break
             run_scanner(name)
     else:

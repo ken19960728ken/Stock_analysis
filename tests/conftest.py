@@ -210,9 +210,11 @@ def mock_engine():
 
 @pytest.fixture
 def mock_db_save(monkeypatch):
-    """Mock db.save_to_db to always return True"""
+    """Mock db.save_to_db to always return True, and mock save_progress"""
     mock_fn = MagicMock(return_value=True)
     monkeypatch.setattr("core.db.save_to_db", mock_fn)
+    monkeypatch.setattr("core.db.save_progress", MagicMock())
+    monkeypatch.setattr("core.db.save_progress_batch", MagicMock())
     # Also patch where scanners import it
     monkeypatch.setattr("scanners.chip_scanner.save_to_db", mock_fn)
     monkeypatch.setattr("scanners.valuation_scanner.save_to_db", mock_fn)
@@ -241,17 +243,21 @@ def mock_db_dispose_engine(monkeypatch):
 
 @pytest.fixture
 def mock_local_index(monkeypatch):
-    """Mock local_index functions: index_exists returns False, add_index/all_indexed/close are no-ops"""
+    """Mock local_index functions: index_exists/failure_exists return False, add_index/add_failure/all_indexed/close are no-ops"""
     mock_index_exists = MagicMock(return_value=False)
     mock_add_index = MagicMock()
     mock_all_indexed = MagicMock(return_value=False)
     mock_close = MagicMock()
+    mock_add_failure = MagicMock()
+    mock_failure_exists = MagicMock(return_value=False)
 
     # Patch at core module level
     monkeypatch.setattr("core.local_index.index_exists", mock_index_exists)
     monkeypatch.setattr("core.local_index.add_index", mock_add_index)
     monkeypatch.setattr("core.local_index.all_indexed", mock_all_indexed)
     monkeypatch.setattr("core.local_index.close", mock_close)
+    monkeypatch.setattr("core.local_index.add_failure", mock_add_failure)
+    monkeypatch.setattr("core.local_index.failure_exists", mock_failure_exists)
 
     # Patch where scanner_base imports it
     monkeypatch.setattr("core.scanner_base.all_indexed", mock_all_indexed)
@@ -267,6 +273,15 @@ def mock_local_index(monkeypatch):
         monkeypatch.setattr(f"{scanner_module}.index_exists", mock_index_exists)
         monkeypatch.setattr(f"{scanner_module}.add_index", mock_add_index)
 
+    # Patch add_failure and failure_exists where FinMind scanners import them
+    for scanner_module in [
+        "scanners.chip_scanner",
+        "scanners.valuation_scanner",
+        "scanners.fundamental_scanner",
+    ]:
+        monkeypatch.setattr(f"{scanner_module}.add_failure", mock_add_failure)
+        monkeypatch.setattr(f"{scanner_module}.failure_exists", mock_failure_exists)
+
     # 重置預算狀態，避免跨測試污染
     import core.rate_limiter as rl_module
     rl_module._budget_remaining = None
@@ -276,6 +291,8 @@ def mock_local_index(monkeypatch):
         "add_index": mock_add_index,
         "all_indexed": mock_all_indexed,
         "close": mock_close,
+        "add_failure": mock_add_failure,
+        "failure_exists": mock_failure_exists,
     }
 
 

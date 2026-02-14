@@ -8,9 +8,9 @@ import pandas as pd
 
 from core.db import save_to_db
 from core.finmind_client import get_fm_loader
-from core.local_index import add_index, index_exists
+from core.local_index import add_failure, add_index, failure_exists, index_exists
 from core.logger import setup_logger
-from core.rate_limiter import RateLimiter
+from core.rate_limiter import BudgetExhaustedError, RateLimiter
 from core.scanner_base import BaseScanner
 
 logger = setup_logger("chip_scanner")
@@ -31,10 +31,13 @@ START_DATE = "2020-01-01"
 class ChipScanner(BaseScanner):
     name = "ChipScanner"
     resume_tables = [t[1] for t in CHIP_DATASETS]
+    DATASET_FAIL_THRESHOLD = 5
 
     def __init__(self):
         self.fm_loader = get_fm_loader()
         self.limiter = RateLimiter(source="finmind")
+        self._dataset_fail_streak = {}
+        self._disabled_datasets = set()
 
     def fetch_one(self, target):
         stock_id = self._get_stock_id(target)
@@ -42,6 +45,10 @@ class ChipScanner(BaseScanner):
 
         for method_name, table_name, label in CHIP_DATASETS:
             if index_exists(table_name, stock_id):
+                continue
+            if table_name in self._disabled_datasets:
+                continue
+            if failure_exists(table_name, stock_id):
                 continue
 
             try:
@@ -58,9 +65,22 @@ class ChipScanner(BaseScanner):
                     if save_to_db(df, table_name):
                         add_index(table_name, stock_id)
                         any_success = True
+                elif df is not None:
+                    # API 成功但無資料（如 ETF），標記已完成避免重複查詢
+                    add_index(table_name, stock_id)
 
+                self._dataset_fail_streak[table_name] = 0
+
+            except BudgetExhaustedError:
+                raise
             except Exception as e:
                 logger.error(f"[{stock_id}] {label} 失敗: {e}")
+                add_failure(table_name, stock_id, str(e))
+                streak = self._dataset_fail_streak.get(table_name, 0) + 1
+                self._dataset_fail_streak[table_name] = streak
+                if streak >= self.DATASET_FAIL_THRESHOLD:
+                    self._disabled_datasets.add(table_name)
+                    logger.warning(f"{label} 連續失敗 {streak} 次，本次掃描停用")
 
             self.limiter.wait()
 
