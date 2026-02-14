@@ -33,11 +33,7 @@ python -m scanners.chip_scanner                   # 籌碼面
 python -m scanners.chip_scanner --test 2330       # 測試單支
 python -m scanners.valuation_scanner              # 估值面
 
-# === 舊腳本（保留但不再主要使用） ===
-python script.py                 # 基礎 OHLCV（固定清單）
-python db_market_scanner.py      # 全市場掃描（已重構至 scanners/price_scanner.py）
-python fundamental_scanner.py    # 財報（已重構至 scanners/fundamental_scanner.py）
-python get_financial_report.py   # 股利+EPS（已合併至 scanners/fundamental_scanner.py）
+# === 其他獨立腳本 ===
 python append_stock_codes.py     # 初始化商品代碼至 SQLite
 python nn_predict.py             # PyTorch 價格預測模型
 ```
