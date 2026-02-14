@@ -2,6 +2,9 @@ import random
 import time
 
 from core.finmind_client import get_fm_token
+from core.logger import setup_logger
+
+logger = setup_logger("rate_limiter")
 
 
 class RateLimiter:
@@ -32,7 +35,7 @@ class RateLimiter:
     def backoff(self, attempt=1):
         """429 重試退避，每次 10 秒"""
         wait_time = 10 * attempt
-        print(f"⏳ 觸發限速，休息 {wait_time} 秒...")
+        logger.warning(f"觸發限速，休息 {wait_time} 秒...")
         time.sleep(wait_time)
 
     def call_with_retry(self, fn, max_retries=3):

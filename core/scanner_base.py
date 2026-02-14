@@ -3,6 +3,9 @@ import abc
 from tqdm import tqdm
 
 from core.db import check_exists, dispose_engine
+from core.logger import setup_logger
+
+logger = setup_logger("scanner_base")
 
 
 class BaseScanner(abc.ABC):
@@ -15,11 +18,11 @@ class BaseScanner(abc.ABC):
     def scan(self):
         targets = self.get_targets()
         if not targets:
-            print("⚠️ 無目標可執行，請檢查資料庫。")
+            logger.warning("無目標可執行，請檢查資料庫。")
             return
 
-        print(f"🚀 [{self.name}] 開始掃描，共 {len(targets)} 檔...")
-        print("💡 隨時按 Ctrl+C 可安全中斷")
+        logger.info(f"[{self.name}] 開始掃描，共 {len(targets)} 檔...")
+        logger.info("隨時按 Ctrl+C 可安全中斷")
 
         pbar = tqdm(targets)
         success_count = 0
@@ -43,22 +46,22 @@ class BaseScanner(abc.ABC):
                     else:
                         fail_count += 1
                 except Exception as e:
-                    print(f"\n⚠️ [{stock_id}] 失敗: {e}")
+                    logger.error(f"[{stock_id}] 失敗: {e}")
                     fail_count += 1
 
         except KeyboardInterrupt:
             pbar.close()
-            print("\n\n🛑 收到中斷指令，正在安全退出...")
+            logger.warning("收到中斷指令，正在安全退出...")
 
         finally:
             dispose_engine()
-            print("\n==========================================")
-            print(f"📊 [{self.name}] 任務結算")
-            print("==========================================")
-            print(f"📥 成功: {success_count} 檔")
-            print(f"⏭️ 跳過: {skip_count} 檔")
-            print(f"❌ 失敗: {fail_count} 檔")
-            print("✅ 系統已安全著陸。")
+            logger.info("==========================================")
+            logger.info(f"[{self.name}] 任務結算")
+            logger.info("==========================================")
+            logger.info(f"成功: {success_count} 檔")
+            logger.info(f"跳過: {skip_count} 檔")
+            logger.info(f"失敗: {fail_count} 檔")
+            logger.info("系統已安全著陸。")
 
     @abc.abstractmethod
     def fetch_one(self, target):

@@ -4,10 +4,51 @@ Provides mock data and utilities for testing all scanner modules.
 """
 
 import datetime
+import logging
+import os
+from logging.handlers import RotatingFileHandler
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+
+
+# ============================================================================
+# Test Logging Configuration
+# ============================================================================
+
+@pytest.fixture(autouse=True, scope="session")
+def setup_test_logging():
+    """配置測試專用日誌，輸出到 logs/test.log，與正式環境隔離"""
+    import core.logger as logger_module
+
+    # 阻止正式環境 logger 初始化
+    logger_module._initialized = True
+
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    test_log_file = os.path.join(log_dir, "test.log")
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    # 清除既有 handler（避免重複）
+    root.handlers.clear()
+
+    formatter = logging.Formatter(
+        logger_module.LOG_FORMAT, datefmt=logger_module.LOG_DATEFMT
+    )
+
+    fh = RotatingFileHandler(
+        test_log_file, maxBytes=5 * 1024 * 1024, backupCount=1, encoding="utf-8"
+    )
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    root.addHandler(fh)
+
+    yield
+
+    root.handlers.clear()
 
 
 # ============================================================================

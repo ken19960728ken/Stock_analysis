@@ -9,8 +9,11 @@ import yfinance as yf
 
 from core.db import save_to_db
 from core.finmind_client import get_fm_loader, get_fm_token
+from core.logger import setup_logger
 from core.rate_limiter import RateLimiter
 from core.scanner_base import BaseScanner
+
+logger = setup_logger("fundamental_scanner")
 
 FOCUS_METRICS = [
     "Revenue",
@@ -95,7 +98,7 @@ class FundamentalScanner(BaseScanner):
             return df_filtered
 
         except Exception as e:
-            print(f"\n⚠️ [{stock_id}] 財報抓取失敗: {e}")
+            logger.error(f"[{stock_id}] 財報抓取失敗: {e}")
             return None
 
     def _fetch_dividends(self, stock_id):
@@ -115,7 +118,7 @@ class FundamentalScanner(BaseScanner):
             return df[["date", "stock_id", "dividend"]]
 
         except Exception as e:
-            print(f"\n⚠️ [{stock_id}] 股利抓取失敗: {e}")
+            logger.error(f"[{stock_id}] 股利抓取失敗: {e}")
             return None
 
 

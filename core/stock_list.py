@@ -1,6 +1,9 @@
 import pandas as pd
 
 from core.db import get_engine
+from core.logger import setup_logger
+
+logger = setup_logger("stock_list")
 
 FALLBACK_STOCKS = ["2330", "2317", "2454", "2603", "0050"]
 
@@ -18,7 +21,7 @@ def get_all_stocks():
     try:
         df = pd.read_sql(sql, get_engine())
     except Exception as e:
-        print(f"⚠️ 讀取 twstock_code 失敗: {e}，使用預設清單")
+        logger.warning(f"讀取 twstock_code 失敗: {e}，使用預設清單")
         return [{"stock_id": s, "yahoo_symbol": f"{s}.TW", "name": s, "type": "股票"}
                 for s in FALLBACK_STOCKS]
 
@@ -41,7 +44,7 @@ def get_all_stocks():
             "type": row["商品類型"],
         })
 
-    print(f"📊 共鎖定 {len(targets)} 檔標的 (普通股 + ETF)")
+    logger.info(f"共鎖定 {len(targets)} 檔標的 (普通股 + ETF)")
     return targets
 
 
@@ -56,5 +59,5 @@ def get_stock_ids_from_daily_price():
     except Exception:
         pass
 
-    print("⚠️ 無法從 daily_price 取得清單，使用預設清單")
+    logger.warning("無法從 daily_price 取得清單，使用預設清單")
     return FALLBACK_STOCKS

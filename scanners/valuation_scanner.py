@@ -8,8 +8,11 @@ import pandas as pd
 
 from core.db import save_to_db
 from core.finmind_client import get_fm_loader, get_fm_token
+from core.logger import setup_logger
 from core.rate_limiter import RateLimiter
 from core.scanner_base import BaseScanner
+
+logger = setup_logger("valuation_scanner")
 
 # 估值面資料集定義：(DataLoader 方法名, DB 表名, 說明)
 VALUATION_DATASETS = [
@@ -50,7 +53,7 @@ class ValuationScanner(BaseScanner):
                         any_success = True
 
             except Exception as e:
-                print(f"\n⚠️ [{stock_id}] {label} 失敗: {e}")
+                logger.error(f"[{stock_id}] {label} 失敗: {e}")
 
             self.limiter.wait()
 

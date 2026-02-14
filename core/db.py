@@ -4,6 +4,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
+from core.logger import setup_logger
+
+logger = setup_logger("db")
+
 load_dotenv()
 
 _engine = None
@@ -35,7 +39,7 @@ def save_to_db(df, table_name, chunksize=500):
         )
         return True
     except Exception as e:
-        print(f"⚠️ 寫入 {table_name} 失敗: {e}")
+        logger.error(f"寫入 {table_name} 失敗: {e}")
         return False
 
 

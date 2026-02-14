@@ -35,7 +35,7 @@ python -m scanners.valuation_scanner              # 估值面
 
 ```
 
-No test suite exists. No linter is configured.
+Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Architecture
 
@@ -45,6 +45,7 @@ No test suite exists. No linter is configured.
 
 | Module | Description |
 |---|---|
+| `core/logger.py` | 統一日誌模組（`setup_logger()`、RotatingFileHandler） |
 | `core/db.py` | DB 連線 engine 單例、`save_to_db()`、`check_exists()` 斷點續傳 |
 | `core/finmind_client.py` | FinMind DataLoader 單例 + Token 管理 |
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試） |
@@ -90,3 +91,11 @@ No test suite exists. No linter is configured.
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
+
+## Logging
+
+- 統一使用 `core/logger.py` 的 `setup_logger(name)` 取得 logger，禁止直接 `print()`。
+- 正式環境日誌寫入 `logs/scanner.log`（RotatingFileHandler, 5MB x 3 備份）+ console (stderr)。
+- 測試環境日誌寫入 `logs/test.log`，由 `tests/conftest.py` 的 session-scoped fixture 自動配置，與正式環境隔離。
+- 日誌格式：`[2025-01-01 12:00:00] [INFO] [module_name] 訊息`
+- `logs/` 目錄已加入 `.gitignore`。

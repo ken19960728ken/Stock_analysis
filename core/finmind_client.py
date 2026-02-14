@@ -3,6 +3,10 @@ import os
 from dotenv import load_dotenv
 from FinMind.data import DataLoader
 
+from core.logger import setup_logger
+
+logger = setup_logger("finmind_client")
+
 load_dotenv()
 
 _fm_loader = None
@@ -29,10 +33,10 @@ def get_fm_loader():
     if token:
         try:
             _fm_loader.login_by_token(api_token=token)
-            print("✅ FinMind VIP 通道已開啟 (Token 認證成功)")
+            logger.info("FinMind VIP 通道已開啟 (Token 認證成功)")
         except Exception as e:
-            print(f"⚠️ FinMind Token 登入失敗 (降級為一般模式): {e}")
+            logger.warning(f"FinMind Token 登入失敗 (降級為一般模式): {e}")
     else:
-        print("⚠️ 未發現 FINMIND_TOKEN，使用一般限速模式")
+        logger.warning("未發現 FINMIND_TOKEN，使用一般限速模式")
 
     return _fm_loader
