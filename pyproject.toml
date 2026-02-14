@@ -1,0 +1,18 @@
+[project]
+name = "stock-analysis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11, <3.12"
+dependencies = [
+    "finmind>=1.9.5",
+    "lxml>=6.0.2",
+    "pandas",
+    "psycopg2-binary",
+    "python-dotenv",
+    "requests",
+    "sqlalchemy",
+    "tqdm>=4.67.3",
+    "twstock>=1.4.0",
+    "yfinance",
+]
