@@ -267,6 +267,10 @@ def mock_local_index(monkeypatch):
         monkeypatch.setattr(f"{scanner_module}.index_exists", mock_index_exists)
         monkeypatch.setattr(f"{scanner_module}.add_index", mock_add_index)
 
+    # 重置預算狀態，避免跨測試污染
+    import core.rate_limiter as rl_module
+    rl_module._budget_remaining = None
+
     return {
         "index_exists": mock_index_exists,
         "add_index": mock_add_index,

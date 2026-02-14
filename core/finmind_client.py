@@ -1,5 +1,6 @@
 import os
 
+import requests
 from dotenv import load_dotenv
 from FinMind.data import DataLoader
 
@@ -40,3 +41,26 @@ def get_fm_loader():
         logger.warning("未發現 FINMIND_TOKEN，使用一般限速模式")
 
     return _fm_loader
+
+
+def get_api_usage():
+    """查詢 FinMind API 使用量，回傳 (user_count, api_request_limit)"""
+    token = get_fm_token()
+    if not token:
+        logger.warning("無 FINMIND_TOKEN，無法查詢 API 使用量")
+        return (None, None)
+
+    try:
+        resp = requests.get(
+            "https://api.web.finmindtrade.com/v2/user_info",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        user_count = data.get("user_count")
+        api_request_limit = data.get("api_request_limit")
+        return (user_count, api_request_limit)
+    except Exception as e:
+        logger.warning(f"查詢 FinMind API 使用量失敗: {e}")
+        return (None, None)

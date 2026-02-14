@@ -5,6 +5,7 @@ from tqdm import tqdm
 from core.db import dispose_engine
 from core.local_index import all_indexed, close as close_index
 from core.logger import setup_logger
+from core.rate_limiter import BudgetExhaustedError
 
 logger = setup_logger("scanner_base")
 
@@ -62,6 +63,10 @@ class BaseScanner(abc.ABC):
                         "疑似 API 配額耗盡或系統性錯誤，自動中止。"
                     )
                     break
+
+        except BudgetExhaustedError:
+            pbar.close()
+            logger.info(f"[{self.name}] 預算耗盡，掃描暫停。")
 
         except KeyboardInterrupt:
             pbar.close()
