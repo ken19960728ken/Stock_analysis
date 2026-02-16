@@ -27,6 +27,58 @@ CHIP_DATASETS = [
 
 START_DATE = "2020-01-01"
 
+# FinMind 法人名稱 → DB 欄位前綴映射
+_INST_NAME_MAP = {
+    "Foreign_Investor": "foreign_investors",
+    "Foreign_Dealer_Self": "foreign_investors",   # 外資自營併入外資
+    "Investment_Trust": "investment_trust",
+    "Dealer_self": "dealer",
+    "Dealer_Hedging": "dealer",                   # 自營避險併入自營商
+}
+
+
+def _pivot_institutional(df: pd.DataFrame) -> pd.DataFrame:
+    """將法人長格式 (date, stock_id, name, buy, sell) 轉為寬格式。
+
+    寬格式欄位: date, stock_id, foreign_investors_buy, foreign_investors_sell,
+                investment_trust_buy, investment_trust_sell, dealer_buy, dealer_sell
+    """
+    if "name" not in df.columns:
+        return df
+
+    df = df.copy()
+    df["group"] = df["name"].map(_INST_NAME_MAP)
+    # 丟掉無法映射的 name（理論上不會發生）
+    df = df.dropna(subset=["group"])
+
+    # 同一 (date, stock_id, group) 加總 buy/sell
+    agg = (
+        df.groupby(["date", "stock_id", "group"], as_index=False)
+        .agg({"buy": "sum", "sell": "sum"})
+    )
+
+    # 寬格式 pivot
+    pivoted = agg.pivot_table(
+        index=["date", "stock_id"],
+        columns="group",
+        values=["buy", "sell"],
+        aggfunc="sum",
+        fill_value=0,
+    )
+
+    # 扁平化欄位: (buy, foreign_investors) → foreign_investors_buy
+    pivoted.columns = [f"{grp}_{metric}" for metric, grp in pivoted.columns]
+    pivoted = pivoted.reset_index()
+
+    # 確保所有預期欄位都存在
+    for prefix in ["foreign_investors", "investment_trust", "dealer"]:
+        for suffix in ["buy", "sell"]:
+            col = f"{prefix}_{suffix}"
+            if col not in pivoted.columns:
+                pivoted[col] = 0
+
+    return pivoted
+
 
 class ChipScanner(BaseScanner):
     name = "ChipScanner"
@@ -62,6 +114,9 @@ class ChipScanner(BaseScanner):
                 if df is not None and not df.empty:
                     if "date" in df.columns:
                         df["date"] = pd.to_datetime(df["date"]).dt.date
+                    # 三大法人需從長格式 pivot 成寬格式
+                    if table_name == "chip_institutional":
+                        df = _pivot_institutional(df)
                     if save_to_db(df, table_name):
                         add_index(table_name, stock_id)
                         any_success = True

@@ -166,6 +166,27 @@ async def api_stocks():
     }
 
 
+@app.get("/api/usage")
+async def api_usage():
+    """FinMind API 使用量"""
+    try:
+        from core.finmind_client import get_api_usage
+        user_count, api_request_limit = get_api_usage()
+        if user_count is None:
+            return {"available": False, "error": "No FINMIND_TOKEN or query failed"}
+        remaining = api_request_limit - user_count
+        pct = round(user_count / api_request_limit * 100, 1) if api_request_limit > 0 else 0.0
+        return {
+            "available": True,
+            "used": user_count,
+            "limit": api_request_limit,
+            "remaining": remaining,
+            "pct": pct,
+        }
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
 @app.get("/api/failures")
 async def api_failures():
     """失敗記錄"""

@@ -15,8 +15,10 @@ Usage:
     python main.py --reset-failures         # 清除全部失敗記錄
     python main.py --reset-failures market_value  # 清除指定 dataset 失敗記錄
     python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
+    python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
 """
 import argparse
+import os
 import sys
 import time
 from datetime import datetime
@@ -89,6 +91,18 @@ def run_dashboard(host="0.0.0.0", port=8050):
 
     logger.info(f"啟動 Dashboard: http://localhost:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+def run_analysis(port=8501):
+    """啟動 Streamlit 量化分析平台"""
+    import subprocess
+    app_path = os.path.join(os.path.dirname(__file__), "analysis", "app.py")
+    logger.info(f"啟動量化分析平台: http://localhost:{port}")
+    subprocess.run([
+        sys.executable, "-m", "streamlit", "run", app_path,
+        "--server.port", str(port),
+        "--server.headless", "true",
+    ])
 
 
 def run_show_failures():
@@ -207,6 +221,11 @@ def main():
         help="啟動監控儀表板 (http://localhost:8050)",
     )
     parser.add_argument(
+        "--analysis",
+        action="store_true",
+        help="啟動量化分析平台 (http://localhost:8501)",
+    )
+    parser.add_argument(
         "--show-failures",
         action="store_true",
         help="顯示各 dataset 失敗統計",
@@ -219,6 +238,11 @@ def main():
         help="清除失敗記錄（不指定表名則清除全部）",
     )
     args = parser.parse_args()
+
+    # --analysis：獨立功能
+    if args.analysis:
+        run_analysis()
+        return
 
     # --dashboard：獨立功能
     if args.dashboard:
@@ -258,7 +282,7 @@ def main():
 
     # 正常模式：需要 --scanner
     if not args.scanner:
-        parser.error("請指定 --scanner、--usage、--schedule 或 --init-index")
+        parser.error("請指定 --scanner、--usage、--schedule、--analysis 或 --init-index")
 
     # 設定預算（若指定）
     if args.budget is not None:

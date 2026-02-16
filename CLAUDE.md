@@ -27,6 +27,7 @@ uv run python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
 uv run python main.py --scanner all            # 依序執行全部 scanner
 
 # === 工具指令 ===
+uv run python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
 uv run python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
 uv run python main.py --usage                  # 查詢 FinMind API 使用量
 uv run python main.py --init-index             # 從遠端 DB 初始化本地索引
@@ -62,6 +63,25 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
 | `core/stock_list.py` | 目標股票清單查詢（DB 優先 + fallback） |
 | `core/scanner_base.py` | BaseScanner 抽象類別（主迴圈、tqdm、Ctrl+C、斷點續傳） |
+
+### 量化分析平台 `analysis/`
+
+| Module | Description |
+|---|---|
+| `analysis/app.py` | Streamlit 主入口 |
+| `analysis/pages/1_個股分析.py` | K 線、技術指標、籌碼、基本面 |
+| `analysis/pages/2_因子篩選.py` | 多維度條件過濾選股 |
+| `analysis/pages/3_策略回測.py` | 10 個內建策略 + 績效報告 |
+| `analysis/pages/4_配對交易.py` | Engle-Granger 共整合 + Z-Score |
+| `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
+| `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
+| `analysis/strategies/` | 10 個策略 (Strategy Pattern) |
+| `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
+| `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
+| `analysis/utils/charts.py` | Plotly 圖表工廠 |
+| `analysis/utils/backtester.py` | 回測引擎（含台灣手續費/稅） |
+| `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta |
+| `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -99,7 +119,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ### Configuration
 
-- **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits).
+- **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html).
 - **Python 3.11** required (`.python-version` and `pyproject.toml`).
 
 ## Key Patterns
