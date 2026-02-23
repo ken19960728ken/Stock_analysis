@@ -220,6 +220,7 @@ def mock_db_save(monkeypatch):
     monkeypatch.setattr("scanners.valuation_scanner.save_to_db", mock_fn)
     monkeypatch.setattr("scanners.price_scanner.save_to_db", mock_fn)
     monkeypatch.setattr("scanners.fundamental_scanner.save_to_db", mock_fn)
+    monkeypatch.setattr("scanners.daily_updater.save_to_db", mock_fn)
     return mock_fn
 
 
@@ -343,6 +344,10 @@ def mock_finmind_client(monkeypatch, mock_fm_loader):
         "scanners.fundamental_scanner.get_fm_loader",
         lambda: mock_fm_loader,
     )
+    monkeypatch.setattr(
+        "scanners.daily_updater.get_fm_loader",
+        lambda: mock_fm_loader,
+    )
     return mock_fm_loader
 
 
@@ -389,6 +394,48 @@ def mock_rate_limiter(monkeypatch):
         "scanners.fundamental_scanner.RateLimiter",
         MockRateLimiter,
     )
+    monkeypatch.setattr(
+        "scanners.daily_updater.RateLimiter",
+        MockRateLimiter,
+    )
+
+
+# ============================================================================
+# Sample Data for DailyUpdater (FinMind batch format)
+# ============================================================================
+
+@pytest.fixture
+def sample_daily_price_finmind_data():
+    """FinMind 批量價格格式（原始欄位名，需映射 max→high, min→low, Trading_Volume→volume）"""
+    return pd.DataFrame({
+        "date": ["2023-01-03", "2023-01-03", "2023-01-03"],
+        "stock_id": ["2330", "2317", "2454"],
+        "open": [540.0, 102.0, 490.0],
+        "max": [545.0, 103.0, 495.0],
+        "min": [538.0, 101.0, 488.0],
+        "close": [543.0, 102.5, 493.0],
+        "Trading_Volume": [30000000, 15000000, 8000000],
+        "Trading_money": [16290000000, 1530000000, 3944000000],
+        "spread": [3.0, 0.5, 3.0],
+    })
+
+
+@pytest.fixture
+def sample_chip_institutional_raw_data():
+    """三大法人長格式原始資料（含 name, buy, sell），用來測試 _pivot_institutional"""
+    return pd.DataFrame({
+        "date": ["2023-01-03"] * 5,
+        "stock_id": ["2330"] * 5,
+        "name": [
+            "Foreign_Investor",
+            "Foreign_Dealer_Self",
+            "Investment_Trust",
+            "Dealer_self",
+            "Dealer_Hedging",
+        ],
+        "buy": [100000, 5000, 50000, 20000, 10000],
+        "sell": [80000, 3000, 40000, 15000, 8000],
+    })
 
 
 # ============================================================================
