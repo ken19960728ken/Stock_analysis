@@ -16,6 +16,7 @@ class MultiFactorStrategy(Strategy):
         "fund_weight": 0.3,
         "buy_threshold": 0.6,
         "sell_threshold": -0.3,
+        "use_zscore": False,
     }
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -80,6 +81,13 @@ class MultiFactorStrategy(Strategy):
         if pe_col is not None:
             pe = pd.to_numeric(df[pe_col], errors="coerce")
             fund_score = pe.apply(lambda x: 1.0 if 0 < x < 15 else (-0.5 if x > 30 else 0.0))
+
+        # --- Z-Score 標準化（可選） ---
+        if self.params.get("use_zscore", False):
+            from analysis.utils.factor_engine import zscore_normalize
+            tech_score = zscore_normalize(tech_score)
+            chip_score = zscore_normalize(chip_score)
+            fund_score = zscore_normalize(fund_score)
 
         # --- 綜合評分 ---
         w = self.params

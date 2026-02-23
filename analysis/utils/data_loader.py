@@ -267,6 +267,153 @@ def load_market_value(stock_id: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=600)
+def load_financial_ratios(stock_id: str) -> pd.DataFrame:
+    """從 financial_reports 長格式 pivot 出寬格式，計算三率"""
+    sql = "SELECT * FROM financial_reports WHERE stock_id = %(sid)s ORDER BY date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        if df.empty or "type" not in df.columns:
+            return pd.DataFrame()
+
+        # pivot 長格式 → 寬格式
+        pivoted = df.pivot_table(index=["date", "stock_id"], columns="type",
+                                 values="value", aggfunc="first").reset_index()
+        pivoted.columns.name = None
+
+        # 計算三率
+        if "Revenue" in pivoted.columns and "GrossProfit" in pivoted.columns:
+            rev = pd.to_numeric(pivoted["Revenue"], errors="coerce")
+            pivoted["gross_margin"] = pd.to_numeric(pivoted["GrossProfit"], errors="coerce") / rev.replace(0, float("nan")) * 100
+        if "Revenue" in pivoted.columns and "OperatingIncome" in pivoted.columns:
+            rev = pd.to_numeric(pivoted["Revenue"], errors="coerce")
+            pivoted["operating_margin"] = pd.to_numeric(pivoted["OperatingIncome"], errors="coerce") / rev.replace(0, float("nan")) * 100
+        if "Revenue" in pivoted.columns and "NetIncome" in pivoted.columns:
+            rev = pd.to_numeric(pivoted["Revenue"], errors="coerce")
+            pivoted["net_margin"] = pd.to_numeric(pivoted["NetIncome"], errors="coerce") / rev.replace(0, float("nan")) * 100
+
+        return pivoted
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_latest_margin_all() -> pd.DataFrame:
+    """DISTINCT ON (stock_id) 取最新融資融券"""
+    sql = """
+    SELECT DISTINCT ON (stock_id) *
+    FROM chip_margin
+    ORDER BY stock_id, date DESC
+    """
+    try:
+        return pd.read_sql(sql, get_engine())
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_latest_shareholding_summary_all() -> pd.DataFrame:
+    """取最新大股東持股比例摘要"""
+    sql = """
+    SELECT stock_id, MAX(date) as date,
+           SUM(holding_percentage) as total_holding_pct,
+           SUM(shareholder_count) as total_shareholder_count
+    FROM (
+        SELECT DISTINCT ON (stock_id, shareholding_range) *
+        FROM chip_shareholding
+        ORDER BY stock_id, shareholding_range, date DESC
+    ) latest
+    GROUP BY stock_id
+    """
+    try:
+        return pd.read_sql(sql, get_engine())
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def compute_revenue_growth_all() -> pd.DataFrame:
+    """月營收年增率"""
+    sql = """
+    SELECT DISTINCT ON (stock_id) stock_id, revenue, month_revenue_year_on_year as revenue_yoy
+    FROM month_revenue
+    ORDER BY stock_id, date DESC
+    """
+    try:
+        return pd.read_sql(sql, get_engine())
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def compute_institutional_consecutive_days_all() -> pd.DataFrame:
+    """法人連續買超天數"""
+    sql = """
+    SELECT stock_id, date,
+           (foreign_investors_buy - foreign_investors_sell +
+            investment_trust_buy - investment_trust_sell +
+            dealer_buy - dealer_sell) as net_buy
+    FROM chip_institutional
+    WHERE date >= CURRENT_DATE - INTERVAL '30 days'
+    ORDER BY stock_id, date DESC
+    """
+    try:
+        df = pd.read_sql(sql, get_engine())
+        if df.empty:
+            return pd.DataFrame()
+
+        results = []
+        for sid, group in df.groupby("stock_id"):
+            group = group.sort_values("date", ascending=False)
+            consecutive = 0
+            for _, row in group.iterrows():
+                if pd.notna(row["net_buy"]) and row["net_buy"] > 0:
+                    consecutive += 1
+                else:
+                    break
+            results.append({"stock_id": sid, "法人連買天數": consecutive})
+        return pd.DataFrame(results)
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def compute_shareholder_change_all() -> pd.DataFrame:
+    """股東人數變化（最新 vs 4 週前）"""
+    sql_latest = """
+    SELECT DISTINCT ON (stock_id) stock_id,
+           SUM(shareholder_count) OVER (PARTITION BY stock_id, date) as total_count,
+           date
+    FROM chip_shareholding
+    ORDER BY stock_id, date DESC
+    """
+    sql_4w_ago = """
+    SELECT DISTINCT ON (stock_id) stock_id,
+           SUM(shareholder_count) OVER (PARTITION BY stock_id, date) as total_count,
+           date
+    FROM chip_shareholding
+    WHERE date <= CURRENT_DATE - INTERVAL '28 days'
+    ORDER BY stock_id, date DESC
+    """
+    try:
+        latest = pd.read_sql(sql_latest, get_engine())
+        older = pd.read_sql(sql_4w_ago, get_engine())
+        if latest.empty or older.empty:
+            return pd.DataFrame()
+
+        merged = latest[["stock_id", "total_count"]].merge(
+            older[["stock_id", "total_count"]],
+            on="stock_id", suffixes=("_now", "_old"),
+        )
+        merged["股東人數變化%"] = (
+            (merged["total_count_now"] - merged["total_count_old"])
+            / merged["total_count_old"].replace(0, float("nan")) * 100
+        )
+        return merged[["stock_id", "股東人數變化%"]]
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
 def load_latest_per_all() -> pd.DataFrame:
     """取得所有股票最新的 PER/PBR/殖利率"""
     sql = """

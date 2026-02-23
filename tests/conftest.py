@@ -514,6 +514,101 @@ def mock_stock_list(monkeypatch, sample_stock_id):
 # Composite Fixtures for Common Setup
 # ============================================================================
 
+# ============================================================================
+# Strategy & Factor Test Fixtures
+# ============================================================================
+
+@pytest.fixture
+def sample_ohlcv_50d(sample_stock_id):
+    """50 天 OHLCV — 足夠計算 MA20、RSI14、MACD 等指標"""
+    import numpy as np
+    dates = pd.date_range("2023-01-01", periods=50, freq="B")
+    np.random.seed(42)
+    close = 580 + np.cumsum(np.random.randn(50) * 2)
+    return pd.DataFrame({
+        "date": dates, "stock_id": sample_stock_id,
+        "open": close - 1, "high": close + 3, "low": close - 3,
+        "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 50),
+    })
+
+
+@pytest.fixture
+def sample_fundamental_wide(sample_stock_id):
+    """寬格式財報資料 + 三率（4 季）"""
+    dates = pd.to_datetime(["2023-03-31", "2023-06-30", "2023-09-30", "2023-12-31"])
+    return pd.DataFrame({
+        "date": dates, "stock_id": sample_stock_id,
+        "close": [580, 590, 585, 595],
+        "Revenue": [4.5e11, 4.8e11, 5.0e11, 5.2e11],
+        "GrossProfit": [1.5e11, 1.6e11, 1.7e11, 1.8e11],
+        "OperatingIncome": [1.0e11, 1.1e11, 1.15e11, 1.2e11],
+        "NetIncome": [0.9e11, 0.95e11, 1.0e11, 1.05e11],
+        "CashFlowsFromOperatingActivities": [1.2e11, 1.3e11, 1.1e11, 1.4e11],
+    })
+
+
+@pytest.fixture
+def sample_margin_20d(sample_stock_id):
+    """20 天融資融券（融資遞減、融券遞增趨勢）"""
+    dates = pd.date_range("2023-01-01", periods=20, freq="B")
+    return pd.DataFrame({
+        "date": dates, "stock_id": sample_stock_id,
+        "close": [580 + i * 0.5 for i in range(20)],
+        "margin_purchase_balance": [10000 - i * 100 for i in range(20)],
+        "short_sale_balance": [5000 + i * 50 for i in range(20)],
+    })
+
+
+@pytest.fixture
+def sample_shareholding_8w(sample_stock_id):
+    """8 週股權分散表（大股東持股增、股東人數減）"""
+    dates = pd.date_range("2023-01-01", periods=8, freq="W")
+    return pd.DataFrame({
+        "date": dates, "stock_id": sample_stock_id,
+        "close": [580 + i * 2 for i in range(8)],
+        "holding_percentage": [25.0 + i * 0.5 for i in range(8)],
+        "shareholder_count": [10000 - i * 100 for i in range(8)],
+    })
+
+
+@pytest.fixture
+def sample_multi_factor_50d(sample_stock_id):
+    """50 天含 PER + 法人欄位的資料"""
+    import numpy as np
+    dates = pd.date_range("2023-01-01", periods=50, freq="B")
+    np.random.seed(42)
+    close = 580 + np.cumsum(np.random.randn(50) * 2)
+    return pd.DataFrame({
+        "date": dates, "stock_id": sample_stock_id,
+        "open": close - 1, "high": close + 3, "low": close - 3,
+        "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 50),
+        "PER": 18 + np.sin(np.arange(50) / 5),
+        "foreign_net_buy": np.random.randint(-1000, 1000, 50),
+    })
+
+
+@pytest.fixture
+def sample_cross_sectional_factors():
+    """10 天 × 5 檔股票的因子截面資料"""
+    import numpy as np
+    dates = pd.date_range("2023-01-01", periods=10, freq="B")
+    stocks = ["2330", "2317", "2454", "2412", "2308"]
+    rows = []
+    np.random.seed(42)
+    for d in dates:
+        for s in stocks:
+            rows.append({
+                "date": d, "stock_id": s,
+                "factor_value": np.random.randn() * 10 + 50,
+                "close": np.random.uniform(100, 600),
+            })
+    return pd.DataFrame(rows)
+
+
+# ============================================================================
+# Composite Fixtures for Common Setup
+# ============================================================================
+
 @pytest.fixture
 def setup_scanner_mocks(
     mock_db_save,

@@ -9,6 +9,10 @@ from analysis.strategies.institutional import InstitutionalStrategy
 from analysis.strategies.value_investing import ValueInvestingStrategy
 from analysis.strategies.dual_thrust import DualThrustStrategy
 from analysis.strategies.multi_factor import MultiFactorStrategy
+from analysis.strategies.fundamental_ratio import FundamentalRatioStrategy
+from analysis.strategies.free_cash_flow import FreeCashFlowStrategy
+from analysis.strategies.margin_signal import MarginSignalStrategy
+from analysis.strategies.ownership_concentration import OwnershipConcentrationStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -21,4 +25,8 @@ STRATEGY_MAP = {
     "價值投資": ValueInvestingStrategy,
     "Dual Thrust": DualThrustStrategy,
     "多因子綜合": MultiFactorStrategy,
+    "財報三率": FundamentalRatioStrategy,
+    "自由現金流": FreeCashFlowStrategy,
+    "融資融券訊號": MarginSignalStrategy,
+    "股權集中度": OwnershipConcentrationStrategy,
 }

@@ -18,6 +18,9 @@ from analysis.utils.data_loader import (
     load_latest_per_all,
     load_latest_price_all,
     load_latest_revenue_all,
+    compute_revenue_growth_all,
+    compute_institutional_consecutive_days_all,
+    compute_shareholder_change_all,
 )
 
 st.set_page_config(page_title="因子篩選", page_icon="🔍", layout="wide")
@@ -30,6 +33,9 @@ with st.spinner("載入資料中..."):
     per_data = load_latest_per_all()
     revenue_data = load_latest_revenue_all()
     inst_data = load_latest_institutional_all()
+    revenue_growth = compute_revenue_growth_all()
+    inst_consecutive = compute_institutional_consecutive_days_all()
+    shareholder_change = compute_shareholder_change_all()
 
 if stocks.empty:
     st.warning("無法載入股票清單")
@@ -87,6 +93,18 @@ if not inst_data.empty:
             on="stock_id", how="left",
         )
 
+# 新增成長面 / 籌碼面資料
+for extra_df, cols in [
+    (revenue_growth, ["stock_id", "revenue_yoy"]),
+    (inst_consecutive, ["stock_id", "法人連買天數"]),
+    (shareholder_change, ["stock_id", "股東人數變化%"]),
+]:
+    if not extra_df.empty:
+        extra_df["stock_id"] = extra_df["stock_id"].astype(str).str.strip()
+        avail_cols = [c for c in cols if c in extra_df.columns]
+        if len(avail_cols) > 1:
+            merged = merged.merge(extra_df[avail_cols], on="stock_id", how="left")
+
 # --- Sidebar 篩選面板 ---
 st.sidebar.header("篩選條件")
 
@@ -119,6 +137,25 @@ if "成交量" in merged.columns:
 else:
     vol_min = None
 
+# 成長面
+st.sidebar.subheader("成長面")
+if "revenue_yoy" in merged.columns:
+    rev_yoy_min = st.sidebar.slider("月營收年增率 >=", -50.0, 100.0, 0.0, step=5.0)
+else:
+    rev_yoy_min = None
+
+# 籌碼面
+st.sidebar.subheader("籌碼面")
+if "法人連買天數" in merged.columns:
+    inst_buy_min = st.sidebar.number_input("法人連買天數 >=", value=0, step=1)
+else:
+    inst_buy_min = None
+
+if "股東人數變化%" in merged.columns:
+    sh_change_max = st.sidebar.slider("股東人數變化 <=", -30.0, 30.0, 0.0, step=2.0)
+else:
+    sh_change_max = None
+
 # 類型篩選
 stock_types = ["全部"] + sorted(merged["type"].dropna().unique().tolist())
 selected_type = st.sidebar.selectbox("商品類型", stock_types)
@@ -149,6 +186,18 @@ if vol_min and "成交量" in filtered.columns:
     v_vals = pd.to_numeric(filtered["成交量"], errors="coerce")
     filtered = filtered[(v_vals >= vol_min) | v_vals.isna()]
 
+if rev_yoy_min and "revenue_yoy" in filtered.columns:
+    ryoy_vals = pd.to_numeric(filtered["revenue_yoy"], errors="coerce")
+    filtered = filtered[(ryoy_vals >= rev_yoy_min) | ryoy_vals.isna()]
+
+if inst_buy_min and "法人連買天數" in filtered.columns:
+    ib_vals = pd.to_numeric(filtered["法人連買天數"], errors="coerce")
+    filtered = filtered[(ib_vals >= inst_buy_min) | ib_vals.isna()]
+
+if sh_change_max and "股東人數變化%" in filtered.columns:
+    sc_vals = pd.to_numeric(filtered["股東人數變化%"], errors="coerce")
+    filtered = filtered[(sc_vals <= sh_change_max) | sc_vals.isna()]
+
 # 移除全部都是 NaN 的篩選結果
 has_data = False
 for c in ["收盤價", "P/E", "P/B", "殖利率"]:
@@ -170,7 +219,8 @@ filtered_sorted = filtered.sort_values(sort_col, ascending=sort_asc, na_position
 
 # 顯示表格
 display_cols = ["stock_id", "name", "type"]
-for c in ["收盤價", "成交量", "P/E", "P/B", "殖利率", "月營收", "法人買賣超"]:
+for c in ["收盤價", "成交量", "P/E", "P/B", "殖利率", "月營收", "法人買賣超",
+          "revenue_yoy", "法人連買天數", "股東人數變化%"]:
     if c in filtered_sorted.columns:
         display_cols.append(c)
 
