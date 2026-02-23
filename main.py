@@ -7,6 +7,8 @@ Usage:
     python main.py --scanner chip           # 籌碼面資料
     python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
     python main.py --scanner all            # Yahoo 先跑，再跑 FinMind（受預算控制）
+    python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
+    python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新
     python main.py --init-index             # 從遠端 DB 初始化本地索引
     python main.py --usage                  # 查詢 FinMind API 使用量
     python main.py --scanner chip --budget 50   # 限制 FinMind API 預算
@@ -21,7 +23,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from core.logger import setup_logger
 
@@ -187,6 +189,33 @@ def run_schedule():
             return
 
 
+def run_daily_schedule():
+    """常駐每日排程：17:00 UTC+8 自動更新"""
+    from scanners.daily_updater import DailyUpdater
+
+    TZ = timezone(timedelta(hours=8))
+    logger.info("每日排程模式啟動，17:00 UTC+8 自動執行（Ctrl+C 可安全退出）")
+
+    while True:
+        now = datetime.now(TZ)
+        target = now.replace(hour=17, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        sleep_sec = (target - now).total_seconds()
+        logger.info(
+            f"下次執行: {target.strftime('%Y-%m-%d %H:%M')}，"
+            f"等待 {sleep_sec:.0f} 秒"
+        )
+
+        try:
+            time.sleep(sleep_sec)
+        except KeyboardInterrupt:
+            logger.info("每日排程模式已安全退出")
+            return
+
+        DailyUpdater().run()
+
+
 def main():
     parser = argparse.ArgumentParser(description="台灣股市量化交易系統 — 資料撈取")
     parser.add_argument(
@@ -214,6 +243,16 @@ def main():
         "--schedule",
         action="store_true",
         help="排程模式：每小時自動循環執行所有 scanner",
+    )
+    parser.add_argument(
+        "--daily",
+        action="store_true",
+        help="手動執行今日更新（批量價格 + 籌碼，< 1 分鐘）",
+    )
+    parser.add_argument(
+        "--daily-schedule",
+        action="store_true",
+        help="常駐排程：每天 17:00 UTC+8 自動執行每日更新",
     )
     parser.add_argument(
         "--dashboard",
@@ -270,6 +309,20 @@ def main():
         run_init_index()
         return
 
+    # --daily：手動執行一次今日更新
+    if args.daily:
+        from scanners.daily_updater import DailyUpdater
+        DailyUpdater().run()
+        return
+
+    # --daily-schedule：常駐每日排程
+    if args.daily_schedule:
+        try:
+            run_daily_schedule()
+        except KeyboardInterrupt:
+            logger.info("每日排程模式已安全退出")
+        return
+
     # --schedule 不可與 --scanner 或 --budget 同時使用
     if args.schedule:
         if args.scanner or args.budget:
@@ -282,7 +335,7 @@ def main():
 
     # 正常模式：需要 --scanner
     if not args.scanner:
-        parser.error("請指定 --scanner、--usage、--schedule、--analysis 或 --init-index")
+        parser.error("請指定 --scanner、--daily、--usage、--schedule、--analysis 或 --init-index")
 
     # 設定預算（若指定）
     if args.budget is not None:

@@ -26,6 +26,10 @@ uv run python main.py --scanner chip           # 籌碼面（三大法人、融�
 uv run python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
 uv run python main.py --scanner all            # 依序執行全部 scanner
 
+# === 每日更新（批量模式，< 1 分鐘） ===
+uv run python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
+uv run python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新
+
 # === 工具指令 ===
 uv run python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
 uv run python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
@@ -98,6 +102,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `fundamental_scanner.py` | FinMind + Yahoo | `financial_reports`, `dividend_history` |
 | `chip_scanner.py` | FinMind | `chip_institutional`, `chip_margin`, `chip_shareholding`, `chip_holding_pct`, `chip_securities_lending`, `chip_short_sale` |
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
+| `daily_updater.py` | FinMind (批量) | `daily_price` + 6 個 chip 表 |
 
 ### Database Tables (Supabase)
 
