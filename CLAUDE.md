@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 台灣股市量化交易系統，分為兩大部分：
 
-1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略、編寫回測腳本，最終目標是實戰部署。
+1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（14 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -58,7 +58,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Architecture
 
-**Data flow**: External APIs → Python scripts → Supabase PostgreSQL
+**Data flow**: External APIs → Python scripts → Supabase PostgreSQL → Streamlit 分析平台
 
 ### 共用模組 `core/`
 
@@ -79,17 +79,39 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/app.py` | Streamlit 主入口 |
 | `analysis/pages/1_個股分析.py` | K 線、技術指標、籌碼、基本面 |
 | `analysis/pages/2_因子篩選.py` | 多維度條件過濾選股 |
-| `analysis/pages/3_策略回測.py` | 10 個內建策略 + 績效報告 |
+| `analysis/pages/3_策略回測.py` | 14 個內建策略 + 績效報告 |
 | `analysis/pages/4_配對交易.py` | Engle-Granger 共整合 + Z-Score |
 | `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
-| `analysis/strategies/` | 10 個策略 (Strategy Pattern) |
+| `analysis/pages/7_策略組合.py` | 多策略組合回測 |
+| `analysis/strategies/` | 14 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
 | `analysis/utils/backtester.py` | 回測引擎（含台灣手續費/稅） |
+| `analysis/utils/portfolio_backtester.py` | 多策略組合回測引擎 |
+| `analysis/utils/factor_engine.py` | 多因子評分引擎 |
 | `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta |
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
+
+#### 策略清單（14 個）
+
+| 策略名稱 | Class | 類型 |
+|---|---|---|
+| MA 交叉 | `MACrossStrategy` | 技術面 |
+| MACD 訊號 | `MACDStrategy` | 技術面 |
+| Bollinger 突破 | `BollingerStrategy` | 技術面 |
+| RSI 反轉 | `RSIReversalStrategy` | 技術面 |
+| Parabolic SAR | `ParabolicSARStrategy` | 技術面 |
+| Heikin-Ashi | `HeikinAshiStrategy` | 技術面 |
+| Dual Thrust | `DualThrustStrategy` | 技術面 |
+| 法人跟單 | `InstitutionalStrategy` | 籌碼面 |
+| 融資融券訊號 | `MarginSignalStrategy` | 籌碼面 |
+| 股權集中度 | `OwnershipConcentrationStrategy` | 籌碼面 |
+| 價值投資 | `ValueInvestingStrategy` | 基本面 |
+| 財報三率 | `FundamentalRatioStrategy` | 基本面 |
+| 自由現金流 | `FreeCashFlowStrategy` | 基本面 |
+| 多因子綜合 | `MultiFactorStrategy` | 技術面(40%)+籌碼面(30%)+基本面(30%) |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -114,12 +136,12 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 | Table | Content |
 |---|---|
-| `daily_price` | OHLCV history per stock |
-| `weekly_price` | 週K線 OHLCV per stock |
-| `monthly_price` | 月K線 OHLCV per stock |
-| `financial_reports` | EPS, revenue, and other financial metrics |
-| `dividend_history` | Dividend records |
-| `twstock_code` | Stock metadata (code, name, market, CFI) |
+| `daily_price` | 日K線 OHLCV |
+| `weekly_price` | 週K線 OHLCV |
+| `monthly_price` | 月K線 OHLCV |
+| `financial_reports` | 財務報表（EPS、營收等） |
+| `dividend_history` | 股利紀錄 |
+| `twstock_code` | 股票代碼元資料（代號、名稱、市場、CFI） |
 | `chip_institutional` | 三大法人買賣超 |
 | `chip_margin` | 融資融券 |
 | `chip_shareholding` | 股權分散表 |
@@ -130,6 +152,21 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `stock_per` | 本益比/股價淨值比/殖利率 |
 | `market_value` | 市值 |
 
+### Tests `tests/`
+
+| Test File | Coverage |
+|---|---|
+| `test_price_scanner.py` | PriceScanner 單元測試 |
+| `test_fundamental_scanner.py` | FundamentalScanner 單元測試 |
+| `test_chip_scanner.py` | ChipScanner 單元測試 |
+| `test_valuation_scanner.py` | ValuationScanner 單元測試 |
+| `test_daily_updater.py` | DailyUpdater 測試（20 項） |
+| `test_strategies.py` | 14 個策略單元測試 |
+| `test_backtester.py` | 回測引擎測試 |
+| `test_portfolio_backtester.py` | 組合回測測試 |
+| `test_factor_engine.py` | 因子引擎測試 |
+| `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
+
 ### Configuration
 
 - **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html).
@@ -139,6 +176,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 - All DB writes use SQLAlchemy with `if_exists="append"` via pandas `to_sql`.
 - All scanners inherit from `BaseScanner`，提供 tqdm 進度條、Ctrl+C 安全中斷、斷點續傳、結算報告。
+- All strategies inherit from `Strategy` ABC（`analysis/strategies/base.py`），實作 `generate_signals(df, **params) -> pd.DataFrame`。
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
