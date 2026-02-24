@@ -21,5 +21,8 @@ venv/
 # 日誌
 logs/
 
+# 回測報告
+reports/
+
 # Claude Code
 .claude/
