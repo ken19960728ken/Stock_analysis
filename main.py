@@ -3,6 +3,8 @@
 
 Usage:
     python main.py --scanner price          # 日K價格資料（Yahoo Finance）
+    python main.py --scanner price_weekly   # 週K價格資料（Yahoo Finance）
+    python main.py --scanner price_monthly  # 月K價格資料（Yahoo Finance）
     python main.py --scanner fundamental    # 財務報表 + 股利
     python main.py --scanner chip           # 籌碼面資料
     python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
@@ -31,13 +33,15 @@ logger = setup_logger("main")
 
 SCANNER_MAP = {
     "price": ("scanners.price_scanner", "PriceScanner"),
+    "price_weekly": ("scanners.price_scanner_weekly", "WeeklyPriceScanner"),
+    "price_monthly": ("scanners.price_scanner_monthly", "MonthlyPriceScanner"),
     "fundamental": ("scanners.fundamental_scanner", "FundamentalScanner"),
     "chip": ("scanners.chip_scanner", "ChipScanner"),
     "valuation": ("scanners.valuation_scanner", "ValuationScanner"),
 }
 
 # 來源分流：Yahoo 不受 FinMind 配額限制
-YAHOO_SCANNERS = ["price"]
+YAHOO_SCANNERS = ["price", "price_weekly", "price_monthly"]
 FINMIND_SCANNERS = ["fundamental", "chip", "valuation"]
 FINMIND_RUN_ORDER = ["fundamental", "chip", "valuation"]
 
@@ -221,7 +225,7 @@ def main():
     parser.add_argument(
         "--scanner",
         choices=list(SCANNER_MAP.keys()) + ["all"],
-        help="選擇要執行的 scanner (price/fundamental/chip/valuation/all)",
+        help="選擇要執行的 scanner (price/price_weekly/price_monthly/fundamental/chip/valuation/all)",
     )
     parser.add_argument(
         "--init-index",

@@ -21,6 +21,8 @@ uv sync
 
 # === 統一入口（推薦，一律用 uv run python） ===
 uv run python main.py --scanner price          # 日K價格資料（Yahoo Finance）
+uv run python main.py --scanner price_weekly   # 週K價格資料（Yahoo Finance）
+uv run python main.py --scanner price_monthly  # 月K價格資料（Yahoo Finance）
 uv run python main.py --scanner fundamental    # 財務報表 + 股利
 uv run python main.py --scanner chip           # 籌碼面（三大法人、融資融券等 6 項）
 uv run python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
@@ -42,6 +44,8 @@ uv run python main.py --scanner chip --budget 50  # 限制 FinMind API 預算
 
 # === 單獨執行 scanner（支援 --test 單支測試） ===
 uv run python -m scanners.price_scanner                 # 全市場日K
+uv run python -m scanners.price_scanner_weekly           # 全市場週K
+uv run python -m scanners.price_scanner_monthly          # 全市場月K
 uv run python -m scanners.fundamental_scanner            # 財報 + 股利
 uv run python -m scanners.chip_scanner                   # 籌碼面
 uv run python -m scanners.chip_scanner --test 2330       # 測試單支
@@ -99,6 +103,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Scanner | Source | DB Tables |
 |---|---|---|
 | `price_scanner.py` | Yahoo Finance | `daily_price` |
+| `price_scanner_weekly.py` | Yahoo Finance | `weekly_price` |
+| `price_scanner_monthly.py` | Yahoo Finance | `monthly_price` |
 | `fundamental_scanner.py` | FinMind + Yahoo | `financial_reports`, `dividend_history` |
 | `chip_scanner.py` | FinMind | `chip_institutional`, `chip_margin`, `chip_shareholding`, `chip_holding_pct`, `chip_securities_lending`, `chip_short_sale` |
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
@@ -109,6 +115,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Table | Content |
 |---|---|
 | `daily_price` | OHLCV history per stock |
+| `weekly_price` | 週K線 OHLCV per stock |
+| `monthly_price` | 月K線 OHLCV per stock |
 | `financial_reports` | EPS, revenue, and other financial metrics |
 | `dividend_history` | Dividend records |
 | `twstock_code` | Stock metadata (code, name, market, CFI) |
