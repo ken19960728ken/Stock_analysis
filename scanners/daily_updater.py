@@ -66,7 +66,7 @@ class DailyUpdater:
 
         try:
             def _call():
-                return self.fm_loader.taiwan_stock_daily_trading_info(
+                return self.fm_loader.taiwan_stock_daily(
                     start_date=date_str, end_date=date_str
                 )
 
