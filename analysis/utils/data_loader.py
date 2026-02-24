@@ -124,6 +124,48 @@ def load_daily_price(stock_id: str, start_date: str = None, end_date: str = None
 
 
 @st.cache_data(ttl=300)
+def load_weekly_price(stock_id: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """載入週K資料"""
+    sql = "SELECT * FROM weekly_price WHERE stock_id = %(sid)s"
+    params = {"sid": stock_id}
+    if start_date:
+        sql += " AND date >= %(start)s"
+        params["start"] = start_date
+    if end_date:
+        sql += " AND date <= %(end)s"
+        params["end"] = end_date
+    sql += " ORDER BY date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=300)
+def load_monthly_price(stock_id: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """載入月K資料"""
+    sql = "SELECT * FROM monthly_price WHERE stock_id = %(sid)s"
+    params = {"sid": stock_id}
+    if start_date:
+        sql += " AND date >= %(start)s"
+        params["start"] = start_date
+    if end_date:
+        sql += " AND date <= %(end)s"
+        params["end"] = end_date
+    sql += " ORDER BY date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=300)
 def load_chip_institutional(stock_id: str) -> pd.DataFrame:
     """三大法人買賣超"""
     sql = "SELECT * FROM chip_institutional WHERE stock_id = %(sid)s ORDER BY date"

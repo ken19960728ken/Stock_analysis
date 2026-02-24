@@ -50,10 +50,10 @@ class TestDailyUpdaterRun:
         """run() without args uses date.today()"""
         updater = DailyUpdater()
         # Return empty so it stops early (non-trading day path)
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = pd.DataFrame()
+        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
         updater.run()
         # Verify API was called with today's date
-        call_kwargs = updater.fm_loader.taiwan_stock_daily_trading_info.call_args
+        call_kwargs = updater.fm_loader.taiwan_stock_daily.call_args
         today_str = datetime.date.today().strftime("%Y-%m-%d")
         assert call_kwargs.kwargs.get("start_date") == today_str
 
@@ -62,9 +62,9 @@ class TestDailyUpdaterRun:
     ):
         """run('2023-01-03') parses the string correctly"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = pd.DataFrame()
+        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
         updater.run("2023-01-03")
-        call_kwargs = updater.fm_loader.taiwan_stock_daily_trading_info.call_args
+        call_kwargs = updater.fm_loader.taiwan_stock_daily.call_args
         assert call_kwargs.kwargs.get("start_date") == "2023-01-03"
         assert call_kwargs.kwargs.get("end_date") == "2023-01-03"
 
@@ -73,9 +73,9 @@ class TestDailyUpdaterRun:
     ):
         """run(date(2023, 1, 3)) accepts date objects"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = pd.DataFrame()
+        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
         updater.run(datetime.date(2023, 1, 3))
-        call_kwargs = updater.fm_loader.taiwan_stock_daily_trading_info.call_args
+        call_kwargs = updater.fm_loader.taiwan_stock_daily.call_args
         assert call_kwargs.kwargs.get("start_date") == "2023-01-03"
 
     def test_run_non_trading_day_skips_chip(
@@ -83,7 +83,7 @@ class TestDailyUpdaterRun:
     ):
         """When price returns empty (non-trading day), chip APIs are NOT called"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = pd.DataFrame()
+        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
         updater.run("2023-01-01")
 
         # None of the chip methods should have been called
@@ -99,7 +99,7 @@ class TestDailyUpdaterRun:
     ):
         """Trading day: price + 6 chip datasets = 7 API calls total"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = (
+        updater.fm_loader.taiwan_stock_daily.return_value = (
             sample_daily_price_finmind_data
         )
         # Chip datasets return empty so they don't need pivot etc.
@@ -109,7 +109,7 @@ class TestDailyUpdaterRun:
         updater.run("2023-01-03")
 
         # Price API called once
-        assert updater.fm_loader.taiwan_stock_daily_trading_info.call_count == 1
+        assert updater.fm_loader.taiwan_stock_daily.call_count == 1
         # Each chip method called once
         for method_name, _, _ in CHIP_DATASETS:
             assert getattr(updater.fm_loader, method_name).call_count == 1
@@ -132,7 +132,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """Normal return: columns mapped correctly (max->high, min->low, Trading_Volume->volume)"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = (
+        updater.fm_loader.taiwan_stock_daily.return_value = (
             sample_daily_price_finmind_data
         )
 
@@ -153,7 +153,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """FinMind returns empty DataFrame -> return False"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = pd.DataFrame()
+        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
 
         result = updater._fetch_price("2023-01-01")
         assert result is False
@@ -163,7 +163,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """FinMind returns None -> return False"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = None
+        updater.fm_loader.taiwan_stock_daily.return_value = None
 
         result = updater._fetch_price("2023-01-01")
         assert result is False
@@ -173,7 +173,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """API throws exception -> return False, no crash"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.side_effect = Exception(
+        updater.fm_loader.taiwan_stock_daily.side_effect = Exception(
             "API Error"
         )
 
@@ -189,7 +189,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """Only 7 columns kept (date, stock_id, open, high, low, close, volume), extras dropped"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = (
+        updater.fm_loader.taiwan_stock_daily.return_value = (
             sample_daily_price_finmind_data
         )
 
@@ -211,7 +211,7 @@ class TestDailyUpdaterFetchPrice:
     ):
         """date column is converted to date objects"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = (
+        updater.fm_loader.taiwan_stock_daily.return_value = (
             sample_daily_price_finmind_data
         )
 
@@ -354,7 +354,7 @@ class TestDailyUpdaterRateLimiting:
     ):
         """limiter.wait() is called after fetching price"""
         updater = DailyUpdater()
-        updater.fm_loader.taiwan_stock_daily_trading_info.return_value = (
+        updater.fm_loader.taiwan_stock_daily.return_value = (
             sample_daily_price_finmind_data
         )
 

@@ -28,6 +28,8 @@ from analysis.utils.data_loader import (
     load_chip_shareholding,
     load_chip_short_sale,
     load_daily_price,
+    load_weekly_price,
+    load_monthly_price,
     load_dividend_history,
     load_financial_reports,
     load_month_revenue,
@@ -47,14 +49,18 @@ if not stock_options:
 selected_label = st.sidebar.selectbox("選擇股票", list(stock_options.keys()), index=0)
 stock_id = stock_options[selected_label]
 
+freq = st.sidebar.radio("K 線頻率", ["日K", "週K", "月K"], index=0, horizontal=True)
+
 time_range = st.sidebar.radio("時間範圍", ["3M", "6M", "1Y", "3Y"], index=2, horizontal=True)
 range_days = {"3M": 90, "6M": 180, "1Y": 365, "3Y": 1095}
 start_date = (datetime.now() - timedelta(days=range_days[time_range])).strftime("%Y-%m-%d")
 
 # --- 載入資料 ---
-df = load_daily_price(stock_id, start_date=start_date)
+FREQ_LOADER = {"日K": load_daily_price, "週K": load_weekly_price, "月K": load_monthly_price}
+FREQ_LABEL = {"日K": "日K", "週K": "週K", "月K": "月K"}
+df = FREQ_LOADER[freq](stock_id, start_date=start_date)
 if df.empty:
-    st.warning(f"股票 {stock_id} 無日K資料")
+    st.warning(f"股票 {stock_id} 無{FREQ_LABEL[freq]}資料")
     st.stop()
 
 # 計算技術指標
