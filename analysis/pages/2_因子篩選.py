@@ -105,6 +105,10 @@ for extra_df, cols in [
         if len(avail_cols) > 1:
             merged = merged.merge(extra_df[avail_cols], on="stock_id", how="left")
 
+# 統一欄位名稱為中文
+if "revenue_yoy" in merged.columns:
+    merged = merged.rename(columns={"revenue_yoy": "月營收YoY%"})
+
 # --- Sidebar 篩選面板 ---
 st.sidebar.header("篩選條件")
 
@@ -139,8 +143,8 @@ else:
 
 # 成長面
 st.sidebar.subheader("成長面")
-if "revenue_yoy" in merged.columns:
-    rev_yoy_min = st.sidebar.slider("月營收年增率 >=", -50.0, 100.0, 0.0, step=5.0)
+if "月營收YoY%" in merged.columns:
+    rev_yoy_min = st.sidebar.slider("月營收年增率 >=", -50.0, 100.0, -50.0, step=5.0)
 else:
     rev_yoy_min = None
 
@@ -152,7 +156,7 @@ else:
     inst_buy_min = None
 
 if "股東人數變化%" in merged.columns:
-    sh_change_max = st.sidebar.slider("股東人數變化 <=", -30.0, 30.0, 0.0, step=2.0)
+    sh_change_max = st.sidebar.slider("股東人數變化 <=", -30.0, 30.0, 30.0, step=2.0)
 else:
     sh_change_max = None
 
@@ -166,35 +170,35 @@ filtered = merged.copy()
 if selected_type != "全部":
     filtered = filtered[filtered["type"] == selected_type]
 
-if pe_range and "P/E" in filtered.columns:
+if pe_range is not None and "P/E" in filtered.columns:
     pe_vals = pd.to_numeric(filtered["P/E"], errors="coerce")
     filtered = filtered[((pe_vals >= pe_range[0]) & (pe_vals <= pe_range[1])) | pe_vals.isna()]
 
-if pb_range and "P/B" in filtered.columns:
+if pb_range is not None and "P/B" in filtered.columns:
     pb_vals = pd.to_numeric(filtered["P/B"], errors="coerce")
     filtered = filtered[((pb_vals >= pb_range[0]) & (pb_vals <= pb_range[1])) | pb_vals.isna()]
 
-if dy_min and "殖利率" in filtered.columns:
+if dy_min is not None and "殖利率" in filtered.columns:
     dy_vals = pd.to_numeric(filtered["殖利率"], errors="coerce")
     filtered = filtered[(dy_vals >= dy_min) | dy_vals.isna()]
 
-if price_range and "收盤價" in filtered.columns:
+if price_range is not None and "收盤價" in filtered.columns:
     p_vals = pd.to_numeric(filtered["收盤價"], errors="coerce")
     filtered = filtered[((p_vals >= price_range[0]) & (p_vals <= price_range[1])) | p_vals.isna()]
 
-if vol_min and "成交量" in filtered.columns:
+if vol_min is not None and "成交量" in filtered.columns:
     v_vals = pd.to_numeric(filtered["成交量"], errors="coerce")
     filtered = filtered[(v_vals >= vol_min) | v_vals.isna()]
 
-if rev_yoy_min and "revenue_yoy" in filtered.columns:
-    ryoy_vals = pd.to_numeric(filtered["revenue_yoy"], errors="coerce")
+if rev_yoy_min is not None and "月營收YoY%" in filtered.columns:
+    ryoy_vals = pd.to_numeric(filtered["月營收YoY%"], errors="coerce")
     filtered = filtered[(ryoy_vals >= rev_yoy_min) | ryoy_vals.isna()]
 
-if inst_buy_min and "法人連買天數" in filtered.columns:
+if inst_buy_min is not None and "法人連買天數" in filtered.columns:
     ib_vals = pd.to_numeric(filtered["法人連買天數"], errors="coerce")
     filtered = filtered[(ib_vals >= inst_buy_min) | ib_vals.isna()]
 
-if sh_change_max and "股東人數變化%" in filtered.columns:
+if sh_change_max is not None and "股東人數變化%" in filtered.columns:
     sc_vals = pd.to_numeric(filtered["股東人數變化%"], errors="coerce")
     filtered = filtered[(sc_vals <= sh_change_max) | sc_vals.isna()]
 
@@ -220,7 +224,7 @@ filtered_sorted = filtered.sort_values(sort_col, ascending=sort_asc, na_position
 # 顯示表格
 display_cols = ["stock_id", "name", "type"]
 for c in ["收盤價", "成交量", "P/E", "P/B", "殖利率", "月營收", "法人買賣超",
-          "revenue_yoy", "法人連買天數", "股東人數變化%"]:
+          "月營收YoY%", "法人連買天數", "股東人數變化%"]:
     if c in filtered_sorted.columns:
         display_cols.append(c)
 
