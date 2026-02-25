@@ -86,6 +86,25 @@ def calc_max_drawdown(equity: pd.Series) -> tuple:
     return max_dd, drawdown, peak_idx, max_dd_idx, dd_duration
 
 
+def calc_risk_contribution(weights: np.ndarray, cov_matrix: pd.DataFrame) -> pd.Series:
+    """
+    計算各資產的風險貢獻
+
+    Returns:
+        pd.Series: 各資產風險貢獻（加總 = 組合波動率）
+    """
+    w = np.array(weights, dtype=float)
+    cov = cov_matrix.values if isinstance(cov_matrix, pd.DataFrame) else np.array(cov_matrix)
+    port_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
+    if port_vol == 0:
+        return pd.Series(0.0, index=cov_matrix.columns if isinstance(cov_matrix, pd.DataFrame) else range(len(w)))
+    marginal = np.dot(cov, w) / port_vol
+    rc = w * marginal
+    if isinstance(cov_matrix, pd.DataFrame):
+        return pd.Series(rc, index=cov_matrix.columns)
+    return pd.Series(rc)
+
+
 def calc_portfolio_volatility(weights: np.ndarray, cov_matrix: pd.DataFrame) -> float:
     """投資組合波動率"""
     port_var = np.dot(weights, np.dot(cov_matrix.values, weights))

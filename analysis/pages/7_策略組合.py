@@ -41,8 +41,14 @@ col1, col2 = st.sidebar.columns(2)
 start_date = col1.date_input("開始日期", value=pd.Timestamp("2022-01-01"))
 end_date = col2.date_input("結束日期", value=pd.Timestamp.now())
 
-weight_mode = st.sidebar.radio("權重模式", ["等權分配", "Sharpe 最大化"])
-equal_weight = weight_mode == "等權分配"
+WEIGHT_METHODS = {
+    "等權分配": "equal",
+    "Sharpe 最大化": "max_sharpe",
+    "最小波動率": "min_volatility",
+    "風險平價": "risk_parity",
+}
+weight_mode = st.sidebar.radio("權重模式", list(WEIGHT_METHODS.keys()))
+weight_method = WEIGHT_METHODS[weight_mode]
 
 run_btn = st.sidebar.button("執行組合回測", type="primary")
 
@@ -65,7 +71,7 @@ if run_btn:
             strategies.append(cls())
 
         pb = PortfolioBacktester(strategies=strategies)
-        result = pb.run(data, equal_weight=equal_weight)
+        result = pb.run(data, weight_method=weight_method)
 
     # --- Section 1: 策略績效對比表 ---
     st.subheader("策略績效對比")
@@ -133,3 +139,14 @@ if run_btn:
         fig_w = px.bar(w_df, x="策略", y="權重", text_auto=".2%")
         fig_w.update_layout(height=350, yaxis_title="權重")
         st.plotly_chart(fig_w, use_container_width=True)
+
+    # --- Section 6: 風險貢獻 ---
+    if result.risk_contributions:
+        st.subheader("風險貢獻")
+        rc_df = pd.DataFrame([
+            {"策略": k, "風險貢獻": v} for k, v in result.risk_contributions.items()
+        ])
+        fig_rc = px.pie(rc_df, values="風險貢獻", names="策略",
+                        title="各策略風險貢獻占比")
+        fig_rc.update_layout(height=350)
+        st.plotly_chart(fig_rc, use_container_width=True)

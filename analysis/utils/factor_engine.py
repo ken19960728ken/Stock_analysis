@@ -88,6 +88,23 @@ def ic_series(factor_df: pd.DataFrame, return_df: pd.DataFrame,
     return result_df
 
 
+def rolling_ic_mean(ic_df: pd.DataFrame, window: int = 60) -> pd.Series:
+    """
+    滾動 IC 均值
+
+    Parameters:
+        ic_df: DataFrame with columns [date, ic]
+        window: 滾動窗口
+
+    Returns:
+        pd.Series(index=date) 滾動 IC 均值
+    """
+    if ic_df.empty or "ic" not in ic_df.columns:
+        return pd.Series(dtype=float)
+    s = ic_df.set_index("date")["ic"].dropna()
+    return s.rolling(window, min_periods=max(window // 3, 5)).mean()
+
+
 def factor_correlation_matrix(factors: dict) -> pd.DataFrame:
     """多因子相關性矩陣。factors: {name: pd.Series}"""
     df = pd.DataFrame(factors)

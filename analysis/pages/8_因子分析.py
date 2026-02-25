@@ -22,7 +22,8 @@ from analysis.utils.data_loader import (
     load_stock_per_multi,
     load_top_volume_stocks,
 )
-from analysis.utils.factor_engine import factor_correlation_matrix, ic_series
+from analysis.utils.dynamic_weights import rolling_ic_weights
+from analysis.utils.factor_engine import factor_correlation_matrix, ic_series, rolling_ic_mean
 from analysis.utils.indicators import (
     add_bollinger,
     add_kd,
@@ -284,7 +285,7 @@ if not ic_results:
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab1, tab2, tab3 = st.tabs(["📈 IC 回測驗證", "🔗 因子相關性矩陣", "🏆 因子有效性排行"])
+tab1, tab2, tab3, tab4 = st.tabs(["📈 IC 回測驗證", "🔗 因子相關性矩陣", "🏆 因子有效性排行", "🔄 動態權重追蹤"])
 
 # ===== Tab 1: IC 回測驗證 =====
 with tab1:
@@ -441,3 +442,72 @@ with tab3:
         - **ICIR (IC Information Ratio)**: Mean IC / IC Std，衡量因子預測能力的穩定性。
         - **有效性**: |ICIR| > 0.5 → 強、0.3~0.5 → 中、< 0.3 → 弱。
         """)
+
+# ===== Tab 4: 動態權重追蹤 =====
+with tab4:
+    if len(ic_results) < 2:
+        st.warning("需要至少 2 個因子才能計算動態權重。")
+    else:
+        dw_method = st.selectbox(
+            "權重計算方式",
+            ["ICIR 加權", "IC 均值加權", "IC 指數衰減"],
+            key="dw_method_select",
+        )
+        method_map = {"ICIR 加權": "icir", "IC 均值加權": "ic_mean", "IC 指數衰減": "ic_decay"}
+        dw_lookback = st.slider("滾動窗口（天）", 20, 120, 60, key="dw_lookback")
+
+        weights_df = rolling_ic_weights(
+            ic_results,
+            lookback=dw_lookback,
+            method=method_map[dw_method],
+        )
+
+        if weights_df.empty:
+            st.warning("無法計算動態權重，資料不足。")
+        else:
+            # 滾動 IC 趨勢折線圖
+            st.subheader("各因子滾動 IC 趨勢")
+            fig_rolling = go.Figure()
+            for fname, ic_df in ic_results.items():
+                rolling_mean = rolling_ic_mean(ic_df, window=dw_lookback)
+                if not rolling_mean.empty:
+                    fig_rolling.add_trace(go.Scatter(
+                        x=rolling_mean.index, y=rolling_mean.values,
+                        mode="lines", name=fname,
+                    ))
+            fig_rolling.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+            fig_rolling.update_layout(
+                template="plotly_dark", height=400,
+                xaxis_title="日期", yaxis_title="滾動 IC 均值",
+                margin=dict(l=50, r=30, t=30, b=30),
+            )
+            st.plotly_chart(fig_rolling, use_container_width=True)
+
+            # 權重隨時間變化 stacked area chart
+            st.subheader("因子權重變化")
+            pivot_w = weights_df.pivot(index="date", columns="factor_name", values="weight").fillna(0)
+            import plotly.express as px
+            fig_area = px.area(
+                pivot_w.reset_index(), x="date", y=pivot_w.columns.tolist(),
+                labels={"value": "權重", "date": "日期"},
+            )
+            fig_area.update_layout(
+                template="plotly_dark", height=400,
+                yaxis_title="權重", legend_title="因子",
+                margin=dict(l=50, r=30, t=30, b=30),
+            )
+            st.plotly_chart(fig_area, use_container_width=True)
+
+            # 最新權重配置表
+            st.subheader("當前最新權重配置")
+            latest_date = weights_df["date"].max()
+            latest_weights = weights_df[weights_df["date"] == latest_date].copy()
+            latest_weights = latest_weights.sort_values("weight", ascending=False)
+            latest_weights["weight"] = latest_weights["weight"].map(lambda x: f"{x:.2%}")
+            st.dataframe(
+                latest_weights[["factor_name", "weight"]].rename(
+                    columns={"factor_name": "因子", "weight": "權重"}
+                ).reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+            )

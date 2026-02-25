@@ -637,3 +637,107 @@ def load_top_volume_stocks(n: int = 50, lookback_days: int = 30) -> list:
         return df["stock_id"].tolist() if not df.empty else []
     except Exception:
         return []
+
+
+@st.cache_data(ttl=3600)
+def load_industry_mapping() -> pd.DataFrame:
+    """stock_id -> industry_category"""
+    sql = "SELECT stock_id, industry_category FROM industry_mapping"
+    try:
+        return pd.read_sql(sql, get_engine())
+    except Exception:
+        return pd.DataFrame(columns=["stock_id", "industry_category"])
+
+
+@st.cache_data(ttl=600)
+def load_month_revenue_all(start_date: str = None) -> pd.DataFrame:
+    """全市場月營收"""
+    sql = "SELECT * FROM month_revenue"
+    params = {}
+    if start_date:
+        sql += " WHERE date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_chip_institutional_all(start_date: str = None) -> pd.DataFrame:
+    """全市場法人買賣超"""
+    sql = "SELECT * FROM chip_institutional"
+    params = {}
+    if start_date:
+        sql += " WHERE date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_dividend_events_all(start_date: str = None) -> pd.DataFrame:
+    """全市場除息事件"""
+    sql = "SELECT * FROM dividend_history"
+    params = {}
+    if start_date:
+        sql += " WHERE date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_earnings_dates_all(start_date: str = None) -> pd.DataFrame:
+    """全市場財報公布日 (從 financial_reports 取 type='EarningsPerShare' 的日期)"""
+    sql = """
+    SELECT stock_id, date, value as eps_value
+    FROM financial_reports
+    WHERE type = 'EarningsPerShare'
+    """
+    params = {}
+    if start_date:
+        sql += " AND date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_daily_price_all(start_date: str = None) -> pd.DataFrame:
+    """全市場日K（用於事件研究等全市場分析）"""
+    sql = "SELECT stock_id, date, open, high, low, close, volume FROM daily_price"
+    params = {}
+    if start_date:
+        sql += " WHERE date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(sql, get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()

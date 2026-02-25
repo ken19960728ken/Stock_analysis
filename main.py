@@ -8,6 +8,7 @@ Usage:
     python main.py --scanner fundamental    # 財務報表 + 股利
     python main.py --scanner chip           # 籌碼面資料
     python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
+    python main.py --scanner industry       # 產業分類（FinMind taiwan_stock_info）
     python main.py --scanner all            # Yahoo 先跑，再跑 FinMind（受預算控制）
     python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
     python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新
@@ -38,6 +39,7 @@ SCANNER_MAP = {
     "fundamental": ("scanners.fundamental_scanner", "FundamentalScanner"),
     "chip": ("scanners.chip_scanner", "ChipScanner"),
     "valuation": ("scanners.valuation_scanner", "ValuationScanner"),
+    "industry": ("scanners.industry_scanner", "IndustryScanner"),
 }
 
 # 來源分流：Yahoo 不受 FinMind 配額限制
@@ -225,7 +227,7 @@ def main():
     parser.add_argument(
         "--scanner",
         choices=list(SCANNER_MAP.keys()) + ["all"],
-        help="選擇要執行的 scanner (price/price_weekly/price_monthly/fundamental/chip/valuation/all)",
+        help="選擇要執行的 scanner (price/price_weekly/price_monthly/fundamental/chip/valuation/industry/all)",
     )
     parser.add_argument(
         "--init-index",

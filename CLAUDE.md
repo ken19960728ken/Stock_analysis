@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 台灣股市量化交易系統，分為兩大部分：
 
 1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（14 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（16 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -26,6 +26,7 @@ uv run python main.py --scanner price_monthly  # 月K價格資料（Yahoo Financ
 uv run python main.py --scanner fundamental    # 財務報表 + 股利
 uv run python main.py --scanner chip           # 籌碼面（三大法人、融資融券等 6 項）
 uv run python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
+uv run python main.py --scanner industry       # 產業分類（FinMind taiwan_stock_info）
 uv run python main.py --scanner all            # 依序執行全部 scanner
 
 # === 每日更新（批量模式，< 1 分鐘） ===
@@ -50,6 +51,7 @@ uv run python -m scanners.fundamental_scanner            # 財報 + 股利
 uv run python -m scanners.chip_scanner                   # 籌碼面
 uv run python -m scanners.chip_scanner --test 2330       # 測試單支
 uv run python -m scanners.valuation_scanner              # 估值面
+uv run python -m scanners.industry_scanner               # 產業分類
 ```
 
 Run tests: `uv run pytest tests/ -v`. No linter is configured.
@@ -83,19 +85,27 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/4_配對交易.py` | Engle-Granger 共整合 + Z-Score |
 | `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
-| `analysis/pages/7_策略組合.py` | 多策略組合回測 |
-| `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行 |
-| `analysis/strategies/` | 14 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/pages/7_策略組合.py` | 多策略組合回測（4 種權重最佳化） |
+| `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行、動態權重 |
+| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 → 產業排名 |
+| `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
+| `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
+| `analysis/strategies/` | 16 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
 | `analysis/utils/backtester.py` | 回測引擎（含台灣手續費/稅） |
 | `analysis/utils/portfolio_backtester.py` | 多策略組合回測引擎 |
-| `analysis/utils/factor_engine.py` | 多因子評分引擎 |
-| `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta |
+| `analysis/utils/portfolio_optimizer.py` | 4 種組合最佳化（Max Sharpe/Min Vol/Risk Parity/BL） |
+| `analysis/utils/factor_engine.py` | 多因子評分引擎 + 滾動 IC |
+| `analysis/utils/dynamic_weights.py` | 滾動 IC → 動態因子權重 |
+| `analysis/utils/sector_rotation.py` | 產業輪動（營收動能 + 法人流向） |
+| `analysis/utils/event_study.py` | 事件研究引擎（CAR/AAR） |
+| `analysis/utils/ml_stock_picker.py` | LightGBM 選股引擎 |
+| `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta, 風險貢獻 |
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
 
-#### 策略清單（14 個）
+#### 策略清單（16 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -113,6 +123,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 財報三率 | `FundamentalRatioStrategy` | 基本面 |
 | 自由現金流 | `FreeCashFlowStrategy` | 基本面 |
 | 多因子綜合 | `MultiFactorStrategy` | 技術面(40%)+籌碼面(30%)+基本面(30%) |
+| 事件驅動 | `EventDrivenStrategy` | 事件面 |
+| 機器學習選股 | `MLFactorStrategy` | ML 多因子 |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -131,6 +143,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `fundamental_scanner.py` | FinMind + Yahoo | `financial_reports`, `dividend_history` |
 | `chip_scanner.py` | FinMind | `chip_institutional`, `chip_margin`, `chip_shareholding`, `chip_holding_pct`, `chip_securities_lending`, `chip_short_sale` |
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
+| `industry_scanner.py` | FinMind | `industry_mapping` |
 | `daily_updater.py` | FinMind (批量) | `daily_price` + 6 個 chip 表 |
 
 ### Database Tables (Supabase)
@@ -152,6 +165,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `month_revenue` | 月營收 |
 | `stock_per` | 本益比/股價淨值比/殖利率 |
 | `market_value` | 市值 |
+| `industry_mapping` | 股票產業分類 |
 
 ### Tests `tests/`
 
@@ -162,10 +176,15 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_chip_scanner.py` | ChipScanner 單元測試 |
 | `test_valuation_scanner.py` | ValuationScanner 單元測試 |
 | `test_daily_updater.py` | DailyUpdater 測試（20 項） |
-| `test_strategies.py` | 14 個策略單元測試 |
+| `test_strategies.py` | 16 個策略單元測試 |
 | `test_backtester.py` | 回測引擎測試 |
 | `test_portfolio_backtester.py` | 組合回測測試 |
+| `test_portfolio_optimizer.py` | 組合最佳化測試（Max Sharpe/Min Vol/Risk Parity/BL） |
 | `test_factor_engine.py` | 因子引擎測試 |
+| `test_dynamic_weights.py` | 動態權重測試 |
+| `test_sector_rotation.py` | 產業輪動測試 |
+| `test_event_study.py` | 事件研究測試 |
+| `test_ml_stock_picker.py` | ML 選股測試 |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

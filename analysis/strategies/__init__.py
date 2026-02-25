@@ -13,6 +13,8 @@ from analysis.strategies.fundamental_ratio import FundamentalRatioStrategy
 from analysis.strategies.free_cash_flow import FreeCashFlowStrategy
 from analysis.strategies.margin_signal import MarginSignalStrategy
 from analysis.strategies.ownership_concentration import OwnershipConcentrationStrategy
+from analysis.strategies.event_driven import EventDrivenStrategy
+from analysis.strategies.ml_factor import MLFactorStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -29,4 +31,6 @@ STRATEGY_MAP = {
     "自由現金流": FreeCashFlowStrategy,
     "融資融券訊號": MarginSignalStrategy,
     "股權集中度": OwnershipConcentrationStrategy,
+    "事件驅動": EventDrivenStrategy,
+    "機器學習選股": MLFactorStrategy,
 }

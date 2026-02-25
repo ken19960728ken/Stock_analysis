@@ -1,5 +1,5 @@
 """
-多策略組合回測引擎 — 等權 / Sharpe 最大化組合
+多策略組合回測引擎 — 等權 / Sharpe 最大化 / 最小波動率 / 風險平價
 """
 
 from dataclasses import dataclass, field
@@ -19,6 +19,8 @@ class PortfolioResult:
     weights: dict = field(default_factory=dict)
     combined_return: float = 0.0
     combined_sharpe: float = 0.0
+    risk_contributions: dict = field(default_factory=dict)
+    optimization_method: str = "equal"
 
 
 class PortfolioBacktester:
@@ -36,9 +38,21 @@ class PortfolioBacktester:
         self.tax = tax
         self.slippage = slippage
 
-    def run(self, data: pd.DataFrame, equal_weight: bool = True) -> PortfolioResult:
+    def run(self, data: pd.DataFrame, equal_weight: bool = True,
+            weight_method: str = None) -> PortfolioResult:
+        """
+        Parameters:
+            data: OHLCV DataFrame
+            equal_weight: 向後相容，True → 等權分配（當 weight_method 未指定時生效）
+            weight_method: "equal" | "max_sharpe" | "min_volatility" | "risk_parity"
+                           若指定此參數，equal_weight 會被忽略
+        """
         if not self.strategies or data.empty:
             return PortfolioResult()
+
+        # 決定權重方法
+        if weight_method is None:
+            weight_method = "equal" if equal_weight else "max_sharpe"
 
         # 1. 對每個策略各建 Backtester 並 run()
         results = {}
@@ -71,10 +85,14 @@ class PortfolioBacktester:
 
         # 4. 計算權重
         n = len(equity_curves)
-        if equal_weight:
+        risk_contributions = {}
+
+        if weight_method == "equal":
             weights = {name: 1.0 / n for name in equity_curves}
         else:
-            weights = self._optimize_weights(returns_df)
+            weights, risk_contributions = self._optimize_weights(
+                returns_df, weight_method
+            )
 
         # 5. 等權/優化組合曲線
         weight_series = pd.Series(weights)
@@ -98,36 +116,28 @@ class PortfolioBacktester:
             weights=weights,
             combined_return=round(combined_return, 4),
             combined_sharpe=round(combined_sharpe, 2),
+            risk_contributions=risk_contributions,
+            optimization_method=weight_method,
         )
 
-    def _optimize_weights(self, returns: pd.DataFrame) -> dict:
-        """Sharpe 最大化（scipy.optimize.minimize）"""
-        from scipy.optimize import minimize
+    def _optimize_weights(self, returns: pd.DataFrame,
+                          method: str) -> tuple:
+        """委派給 portfolio_optimizer 模組"""
+        from analysis.utils.portfolio_optimizer import (
+            max_sharpe,
+            min_volatility,
+            risk_parity,
+        )
 
         n = returns.shape[1]
         if n == 0:
-            return {}
+            return {}, {}
 
-        names = returns.columns.tolist()
-        mean_returns = returns.mean().values
-        cov_matrix = returns.cov().values
-        rf = 0.015 / 252
-
-        def neg_sharpe(w):
-            port_return = np.dot(w, mean_returns)
-            port_vol = np.sqrt(np.dot(w.T, np.dot(cov_matrix, w)))
-            if port_vol == 0:
-                return 0.0
-            return -(port_return - rf) / port_vol
-
-        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1}
-        bounds = [(0, 1)] * n
-        x0 = np.ones(n) / n
-
-        result = minimize(neg_sharpe, x0, method="SLSQP",
-                          bounds=bounds, constraints=constraints)
-
-        if result.success:
-            return {names[i]: round(float(result.x[i]), 4) for i in range(n)}
+        if method == "min_volatility":
+            result = min_volatility(returns)
+        elif method == "risk_parity":
+            result = risk_parity(returns)
         else:
-            return {name: 1.0 / n for name in names}
+            result = max_sharpe(returns)
+
+        return result.weights, result.risk_contributions
