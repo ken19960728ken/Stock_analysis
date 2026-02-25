@@ -563,3 +563,77 @@ def load_daily_price_multi(stock_ids: list, start_date: str = None) -> pd.DataFr
         return df
     except Exception:
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_stock_per_multi(stock_ids: list, start_date: str = None) -> pd.DataFrame:
+    """批次載入多支股票的 PER/PBR/殖利率時間序列"""
+    if not stock_ids:
+        return pd.DataFrame()
+    from sqlalchemy import text
+    placeholders = ", ".join([f":sid_{i}" for i in range(len(stock_ids))])
+    sql = f"SELECT stock_id, date, per, pbr, dividend_yield FROM stock_per WHERE stock_id IN ({placeholders})"
+    params = {f"sid_{i}": sid for i, sid in enumerate(stock_ids)}
+    if start_date:
+        sql += " AND date >= :start_date"
+        params["start_date"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(text(sql), get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_chip_institutional_multi(stock_ids: list, start_date: str = None) -> pd.DataFrame:
+    """批次載入多支股票的三大法人買賣超"""
+    if not stock_ids:
+        return pd.DataFrame()
+    from sqlalchemy import text
+    placeholders = ", ".join([f":sid_{i}" for i in range(len(stock_ids))])
+    sql = f"SELECT * FROM chip_institutional WHERE stock_id IN ({placeholders})"
+    params = {f"sid_{i}": sid for i, sid in enumerate(stock_ids)}
+    if start_date:
+        sql += " AND date >= :start_date"
+        params["start_date"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = pd.read_sql(text(sql), get_engine(), params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def load_top_volume_stocks(n: int = 50, lookback_days: int = 30) -> list:
+    """取得近 N 天平均成交量 Top N 的 stock_id 清單"""
+    sql = """
+    SELECT stock_id, AVG(volume) as avg_volume
+    FROM daily_price
+    WHERE date >= CURRENT_DATE - INTERVAL ':lookback days'
+    GROUP BY stock_id
+    ORDER BY avg_volume DESC
+    LIMIT :n
+    """
+    from sqlalchemy import text
+    try:
+        df = pd.read_sql(
+            text(
+                "SELECT stock_id, AVG(volume) as avg_volume "
+                "FROM daily_price "
+                "WHERE date >= CURRENT_DATE - :lookback * INTERVAL '1 day' "
+                "GROUP BY stock_id "
+                "ORDER BY avg_volume DESC "
+                "LIMIT :n"
+            ),
+            get_engine(),
+            params={"lookback": lookback_days, "n": n},
+        )
+        return df["stock_id"].tolist() if not df.empty else []
+    except Exception:
+        return []

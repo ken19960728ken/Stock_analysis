@@ -84,6 +84,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
 | `analysis/pages/7_策略組合.py` | 多策略組合回測 |
+| `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行 |
 | `analysis/strategies/` | 14 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
@@ -188,3 +189,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - 測試環境日誌寫入 `logs/test.log`，由 `tests/conftest.py` 的 session-scoped fixture 自動配置，與正式環境隔離。
 - 日誌格式：`[2025-01-01 12:00:00] [INFO] [module_name] 訊息`
 - `logs/` 目錄已加入 `.gitignore`。
+
+## Workflow Conventions
+
+- 執行重大操作（如切換功能、部署）前，先 git commit 並 push 當前改動。
+- 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
+- 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
