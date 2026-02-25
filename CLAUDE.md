@@ -81,7 +81,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/app.py` | Streamlit 主入口 |
 | `analysis/pages/1_個股分析.py` | K 線、技術指標、籌碼、基本面 |
 | `analysis/pages/2_因子篩選.py` | 多維度條件過濾選股 |
-| `analysis/pages/3_策略回測.py` | 14 個內建策略 + 績效報告 |
+| `analysis/pages/3_策略回測.py` | 16 個內建策略 + 績效報告 |
 | `analysis/pages/4_配對交易.py` | Engle-Granger 共整合 + Z-Score |
 | `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
