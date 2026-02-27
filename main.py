@@ -21,6 +21,9 @@ Usage:
     python main.py --reset-failures market_value  # 清除指定 dataset 失敗記錄
     python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
     python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
+    python main.py --report                              # 列出所有策略
+    python main.py --report "MA 交叉" --report-all       # 全市場 MA 交叉回測報告
+    python main.py --report "法人跟單" --report-stocks 2330 2317  # 指定股票回測報告
 """
 import argparse
 import os
@@ -282,7 +285,59 @@ def main():
         metavar="TABLE_NAME",
         help="清除失敗記錄（不指定表名則清除全部）",
     )
+    # --- 策略回測報告 ---
+    parser.add_argument(
+        "--report",
+        nargs="?",
+        const="__list__",
+        metavar="STRATEGY_NAME",
+        help="執行策略回測報告（不指定策略名則列出所有策略）",
+    )
+    parser.add_argument(
+        "--report-stocks",
+        nargs="+",
+        metavar="STOCK_ID",
+        help="報告指定股票",
+    )
+    parser.add_argument(
+        "--report-all",
+        action="store_true",
+        help="報告全市場",
+    )
+    parser.add_argument(
+        "--report-top",
+        type=int,
+        default=20,
+        help="顯示 Top N（預設 20）",
+    )
+    parser.add_argument(
+        "--report-years",
+        type=int,
+        default=3,
+        help="回測年數（預設 3）",
+    )
+    parser.add_argument(
+        "--report-param",
+        nargs="+",
+        metavar="KEY=VALUE",
+        help="策略參數覆蓋（格式: key=value）",
+    )
     args = parser.parse_args()
+
+    # --report：策略回測報告
+    if args.report is not None:
+        from scripts.strategy_report import parse_params, run_report
+        strategy_name = None if args.report == "__list__" else args.report
+        param_overrides = parse_params(args.report_param)
+        run_report(
+            strategy_name=strategy_name,
+            stock_ids=args.report_stocks,
+            all_stocks=args.report_all,
+            top_n=args.report_top,
+            years=args.report_years,
+            param_overrides=param_overrides,
+        )
+        return
 
     # --analysis：獨立功能
     if args.analysis:

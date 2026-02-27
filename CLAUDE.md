@@ -43,6 +43,16 @@ uv run python main.py --show-failures          # 顯示各 dataset 失敗統計
 uv run python main.py --reset-failures         # 清除全部失敗記錄
 uv run python main.py --scanner chip --budget 50  # 限制 FinMind API 預算
 
+# === 策略回測報告 ===
+uv run python main.py --report                              # 列出所有策略
+uv run python main.py --report "MA 交叉" --report-all       # 全市場 MA 交叉回測報告
+uv run python main.py --report "法人跟單" --report-stocks 2330 2317  # 指定股票
+uv run python main.py --report "RSI 反轉" --report-all --report-top 10 --report-years 3
+uv run python scripts/strategy_report.py --list              # 直接執行：列出策略
+uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 2317
+uv run python scripts/strategy_report.py --strategy "MA 交叉" --all --top 20 --no-html
+uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 --param fast_period=10
+
 # === 單獨執行 scanner（支援 --test 單支測試） ===
 uv run python -m scanners.price_scanner                 # 全市場日K
 uv run python -m scanners.price_scanner_weekly           # 全市場週K
@@ -134,6 +144,13 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `dashboard/app.py` | FastAPI 後端：4 個端點（`/`、`/api/stats`、`/api/stocks`、`/api/failures`） |
 | `dashboard/static/index.html` | 單頁儀表板（Chart.js 圓餅圖 + 商品矩陣 + 失敗記錄） |
 
+### 腳本 `scripts/`
+
+| Script | Description |
+|---|---|
+| `value_investing_report.py` | 價值投資全市場回測報告（專用） |
+| `strategy_report.py` | 通用策略掃描回測報告（16 策略 + 0050 基準比較） |
+
 ### Scanner 模組 `scanners/`
 
 | Scanner | Source | DB Tables |
@@ -200,6 +217,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_core_rate_limiter.py` | core/rate_limiter.py 限速器 + 預算測試 |
 | `test_core_local_index.py` | core/local_index.py SQLite 索引測試 |
 | `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
+| `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
