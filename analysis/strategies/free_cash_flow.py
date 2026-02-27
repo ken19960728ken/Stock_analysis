@@ -48,8 +48,8 @@ class FreeCashFlowStrategy(Strategy):
             # 無市值資料：降級為只看 OCF 正負
             condition = ocf > 0
 
-        meets = condition.fillna(False).astype(bool)
-        prev_meets = meets.shift(1).fillna(False).astype(bool)
+        meets = condition.eq(True)
+        prev_meets = meets.shift(1, fill_value=False)
         df.loc[meets & ~prev_meets, "signal"] = 1
         df.loc[~meets & prev_meets, "signal"] = -1
 

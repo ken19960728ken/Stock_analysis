@@ -199,9 +199,10 @@ if run_bt:
                 b_days = (b_equity.index[-1] - b_equity.index[0]).days
                 b_annual = (1 + b_total_return) ** (365 / b_days) - 1 if b_days > 0 else 0.0
                 b_returns = b_equity.pct_change().dropna()
-                rf = 0.015
-                if len(b_returns) > 1 and b_returns.std() > 0:
-                    b_sharpe = (b_returns.mean() - rf / 252) / b_returns.std() * np.sqrt(252)
+                from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
+                rf = RISK_FREE_RATE
+                if len(b_returns) > 1 and b_returns.std() > 1e-12:
+                    b_sharpe = (b_returns.mean() - rf / TRADING_DAYS_PER_YEAR) / b_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
                 else:
                     b_sharpe = 0.0
                 b_peak = b_equity.cummax()

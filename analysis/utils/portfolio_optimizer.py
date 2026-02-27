@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
+
+_EPS = 1e-12
+
 
 @dataclass
 class OptimizationResult:
@@ -19,28 +23,28 @@ class OptimizationResult:
     risk_contributions: dict = field(default_factory=dict)
 
 
-def _annualize(mean_ret, cov, trading_days=252):
+def _annualize(mean_ret, cov, trading_days=TRADING_DAYS_PER_YEAR):
     return mean_ret * trading_days, cov * trading_days
 
 
-def _portfolio_stats(w, mean_ret, cov, rf=0.015):
+def _portfolio_stats(w, mean_ret, cov, rf=RISK_FREE_RATE):
     port_ret = np.dot(w, mean_ret)
     port_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-    sharpe = (port_ret - rf) / port_vol if port_vol > 0 else 0.0
+    sharpe = (port_ret - rf) / port_vol if port_vol > _EPS else 0.0
     return port_ret, port_vol, sharpe
 
 
 def _risk_contribution(w, cov):
     """計算各資產的風險貢獻"""
     port_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-    if port_vol == 0:
+    if port_vol < _EPS:
         return np.zeros_like(w)
     marginal = np.dot(cov, w) / port_vol
     rc = w * marginal
     return rc
 
 
-def max_sharpe(returns: pd.DataFrame, rf: float = 0.015,
+def max_sharpe(returns: pd.DataFrame, rf: float = RISK_FREE_RATE,
                constraints: dict = None) -> OptimizationResult:
     """Sharpe Ratio 最大化"""
     names = returns.columns.tolist()
@@ -52,7 +56,7 @@ def max_sharpe(returns: pd.DataFrame, rf: float = 0.015,
 
     def neg_sharpe(w):
         ret, vol, _ = _portfolio_stats(w, mean_ret, cov, rf)
-        return -(ret - rf) / vol if vol > 0 else 0.0
+        return -(ret - rf) / vol if vol > _EPS else 0.0
 
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1}]
     bounds = [(constraints or {}).get("min_weight", 0),
@@ -65,7 +69,7 @@ def max_sharpe(returns: pd.DataFrame, rf: float = 0.015,
     w = result.x if result.success else np.ones(n) / n
 
     ret, vol, sharpe = _portfolio_stats(w, mean_ret, cov, rf)
-    rc = _risk_contribution(w, cov * 252)
+    rc = _risk_contribution(w, cov * TRADING_DAYS_PER_YEAR)
     weights_dict = {names[i]: round(float(w[i]), 4) for i in range(n)}
     rc_dict = {names[i]: round(float(rc[i]), 4) for i in range(n)}
 
@@ -130,7 +134,7 @@ def risk_parity(returns: pd.DataFrame) -> OptimizationResult:
     def risk_parity_obj(w):
         rc = _risk_contribution(w, cov)
         port_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-        if port_vol == 0:
+        if port_vol < _EPS:
             return 0.0
         rc_pct = rc / port_vol
         return np.sum((rc_pct - target_rc) ** 2)
@@ -160,7 +164,7 @@ def risk_parity(returns: pd.DataFrame) -> OptimizationResult:
 
 def black_litterman(returns: pd.DataFrame, market_caps: dict = None,
                     views: dict = None, tau: float = 0.05,
-                    rf: float = 0.015) -> OptimizationResult:
+                    rf: float = RISK_FREE_RATE) -> OptimizationResult:
     """
     Black-Litterman 模型
 
@@ -178,7 +182,7 @@ def black_litterman(returns: pd.DataFrame, market_caps: dict = None,
 
     mean_ret_daily = returns.mean().values
     cov_daily = returns.cov().values
-    cov = cov_daily * 252
+    cov = cov_daily * TRADING_DAYS_PER_YEAR
 
     # 市場均衡權重
     if market_caps and all(name in market_caps for name in names):
@@ -220,7 +224,7 @@ def black_litterman(returns: pd.DataFrame, market_caps: dict = None,
     def neg_sharpe(w):
         ret = np.dot(w, bl_mean)
         vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-        return -(ret - rf) / vol if vol > 0 else 0.0
+        return -(ret - rf) / vol if vol > _EPS else 0.0
 
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1}]
     bounds = [(0, 1)] * n
@@ -232,7 +236,7 @@ def black_litterman(returns: pd.DataFrame, market_caps: dict = None,
 
     ann_ret = np.dot(w, bl_mean)
     ann_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-    sharpe = (ann_ret - rf) / ann_vol if ann_vol > 0 else 0.0
+    sharpe = (ann_ret - rf) / ann_vol if ann_vol > _EPS else 0.0
     rc = _risk_contribution(w, cov)
     weights_dict = {names[i]: round(float(w[i]), 4) for i in range(n)}
     rc_dict = {names[i]: round(float(rc[i]), 4) for i in range(n)}
@@ -248,7 +252,7 @@ def black_litterman(returns: pd.DataFrame, market_caps: dict = None,
 
 
 def efficient_frontier(returns: pd.DataFrame, n_points: int = 50,
-                       rf: float = 0.015) -> pd.DataFrame:
+                       rf: float = RISK_FREE_RATE) -> pd.DataFrame:
     """計算效率前緣上的點"""
     names = returns.columns.tolist()
     n = len(names)
@@ -283,7 +287,7 @@ def efficient_frontier(returns: pd.DataFrame, n_points: int = 50,
         if result.success:
             vol = float(result.fun)
             ret = float(target_ret)
-            sharpe = (ret - rf) / vol if vol > 0 else 0.0
+            sharpe = (ret - rf) / vol if vol > _EPS else 0.0
             frontier.append({"return": ret, "volatility": vol, "sharpe": sharpe})
 
     return pd.DataFrame(frontier)

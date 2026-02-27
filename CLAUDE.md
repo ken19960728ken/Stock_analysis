@@ -73,6 +73,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
 | `core/stock_list.py` | 目標股票清單查詢（DB 優先 + fallback） |
 | `core/scanner_base.py` | BaseScanner 抽象類別（主迴圈、tqdm、Ctrl+C、斷點續傳） |
+| `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`） |
 
 ### 量化分析平台 `analysis/`
 
@@ -186,6 +187,19 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_sector_rotation.py` | 產業輪動測試 |
 | `test_event_study.py` | 事件研究測試 |
 | `test_ml_stock_picker.py` | ML 選股測試 |
+| `test_indicators.py` | 技術指標模組測試（11 個指標函數） |
+| `test_risk.py` | 風險指標模組測試（VaR/Sharpe/Beta/回撤等） |
+| `test_pair_trading.py` | 配對交易測試（共整合/Z-Score/半衰期） |
+| `test_data_loader.py` | 資料查詢層測試（Mock DB） |
+| `test_charts.py` | Plotly 圖表工廠測試 |
+| `test_core_constants.py` | core/constants.py 常數驗證 |
+| `test_core_logger.py` | core/logger.py 日誌模組測試 |
+| `test_core_db.py` | core/db.py 白名單驗證 + save/check 測試 |
+| `test_core_stock_list.py` | core/stock_list.py 股票清單測試 |
+| `test_core_finmind_client.py` | core/finmind_client.py 單例 + Token 測試 |
+| `test_core_rate_limiter.py` | core/rate_limiter.py 限速器 + 預算測試 |
+| `test_core_local_index.py` | core/local_index.py SQLite 索引測試 |
+| `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

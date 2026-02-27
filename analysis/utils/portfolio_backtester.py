@@ -8,7 +8,10 @@ import numpy as np
 import pandas as pd
 
 from analysis.strategies.base import BacktestResult, Strategy
+from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
 from analysis.utils.backtester import Backtester
+
+_EPS = 1e-12
 
 
 @dataclass
@@ -104,10 +107,10 @@ class PortfolioBacktester:
         if len(combined_equity) > 1:
             combined_return = combined_equity.iloc[-1] / combined_equity.iloc[0] - 1
             comb_returns = combined_equity.pct_change().dropna()
-            if len(comb_returns) > 1 and comb_returns.std() > 0:
-                rf = 0.015
-                excess = comb_returns.mean() - rf / 252
-                combined_sharpe = excess / comb_returns.std() * np.sqrt(252)
+            if len(comb_returns) > 1 and comb_returns.std() > _EPS:
+                rf = RISK_FREE_RATE
+                excess = comb_returns.mean() - rf / TRADING_DAYS_PER_YEAR
+                combined_sharpe = excess / comb_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
 
         return PortfolioResult(
             strategy_results=results,

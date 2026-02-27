@@ -34,8 +34,8 @@ class HeikinAshiStrategy(Strategy):
             consecutive_bull = bullish.astype(int)
             consecutive_bear = bearish.astype(int)
             for i in range(1, confirm):
-                consecutive_bull = consecutive_bull + bullish.shift(i).fillna(False).astype(int)
-                consecutive_bear = consecutive_bear + bearish.shift(i).fillna(False).astype(int)
+                consecutive_bull = consecutive_bull + bullish.shift(i, fill_value=False).astype(int)
+                consecutive_bear = consecutive_bear + bearish.shift(i, fill_value=False).astype(int)
 
             df.loc[
                 (consecutive_bull >= confirm) &

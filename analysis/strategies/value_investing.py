@@ -66,7 +66,7 @@ class ValueInvestingStrategy(Strategy):
 
         # 分數達標且前一期未達標 → 買入
         meets = score >= threshold
-        df.loc[meets & (~meets.shift(1).fillna(False)), "signal"] = 1
-        df.loc[(~meets) & meets.shift(1).fillna(False), "signal"] = -1
+        df.loc[meets & (~meets.shift(1, fill_value=False)), "signal"] = 1
+        df.loc[(~meets) & meets.shift(1, fill_value=False), "signal"] = -1
 
         return df

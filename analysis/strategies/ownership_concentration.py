@@ -43,7 +43,7 @@ class OwnershipConcentrationStrategy(Strategy):
             hp = pd.to_numeric(df[hp_col], errors="coerce")
             hp_change = hp - hp.shift(lb)
             holder_cond = hp_change >= self.params["holder_increase_threshold"]
-            buy_mask = buy_mask & holder_cond.fillna(False)
+            buy_mask = buy_mask & holder_cond.eq(True)
             conditions += 1
 
         if sc_col is not None:
@@ -51,14 +51,14 @@ class OwnershipConcentrationStrategy(Strategy):
             sc_prev = sc.shift(lb)
             sc_pct_change = (sc - sc_prev) / sc_prev.replace(0, float("nan")) * 100
             shareholder_cond = sc_pct_change <= self.params["shareholder_decrease_threshold"]
-            buy_mask = buy_mask & shareholder_cond.fillna(False)
+            buy_mask = buy_mask & shareholder_cond.eq(True)
             conditions += 1
 
         if conditions == 0:
             return df
 
-        meets = buy_mask.fillna(False).astype(bool)
-        prev_meets = meets.shift(1).fillna(False).astype(bool)
+        meets = buy_mask.eq(True)
+        prev_meets = meets.shift(1, fill_value=False)
         df.loc[meets & ~prev_meets, "signal"] = 1
         df.loc[~meets & prev_meets, "signal"] = -1
 

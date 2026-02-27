@@ -42,10 +42,10 @@ class MarginSignalStrategy(Strategy):
         # 賣出：融資餘額大增（> |threshold|）且股價下跌
         sell_cond = (margin_pct_change >= abs(threshold)) & price_down
 
-        buy_cond = buy_cond.fillna(False).astype(bool)
-        sell_cond = sell_cond.fillna(False).astype(bool)
-        prev_buy = buy_cond.shift(1).fillna(False).astype(bool)
-        prev_sell = sell_cond.shift(1).fillna(False).astype(bool)
+        buy_cond = buy_cond.eq(True)
+        sell_cond = sell_cond.eq(True)
+        prev_buy = buy_cond.shift(1, fill_value=False)
+        prev_sell = sell_cond.shift(1, fill_value=False)
 
         df.loc[buy_cond & ~prev_buy, "signal"] = 1
         df.loc[sell_cond & ~prev_sell, "signal"] = -1

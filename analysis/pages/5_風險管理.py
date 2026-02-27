@@ -151,7 +151,8 @@ if returns_dict:
         cvar_95 = calc_cvar(port_returns, 0.95)
         sharpe = calc_sharpe(port_returns)
         sortino = calc_sortino(port_returns)
-        volatility = port_returns.std() * np.sqrt(252)
+        from core.constants import TRADING_DAYS_PER_YEAR
+        volatility = port_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
 
         cols = st.columns(5)
         cols[0].metric("VaR (95%)", f"{var_95 * 100:.2f}%")
@@ -168,7 +169,7 @@ if returns_dict:
         cols = st.columns(3)
         cols[0].metric("最大回撤", f"{max_dd * 100:.1f}%")
         cols[1].metric("回撤持續天數", f"{dd_days}")
-        annual_return = port_returns.mean() * 252
+        annual_return = port_returns.mean() * TRADING_DAYS_PER_YEAR
         cols[2].metric("Calmar Ratio", f"{calc_calmar_ratio(annual_return, max_dd):.2f}")
 
         # 水下權益曲線

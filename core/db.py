@@ -9,6 +9,23 @@ from core.logger import setup_logger
 
 logger = setup_logger("db")
 
+# 合法資料表白名單（防止 SQL 注入）
+VALID_TABLES = frozenset({
+    "daily_price", "weekly_price", "monthly_price",
+    "financial_reports", "dividend_history", "twstock_code",
+    "chip_institutional", "chip_margin", "chip_shareholding",
+    "chip_holding_pct", "chip_securities_lending", "chip_short_sale",
+    "month_revenue", "stock_per", "market_value",
+    "industry_mapping", "scan_progress",
+})
+
+
+def _validate_table_name(table_name: str) -> str:
+    """驗證表名是否在白名單中，防止 SQL 注入"""
+    if table_name not in VALID_TABLES:
+        raise ValueError(f"非法資料表名稱: {table_name!r}")
+    return table_name
+
 load_dotenv()
 
 _engine = None
@@ -38,6 +55,7 @@ def save_to_db(df, table_name, chunksize=500):
     """封裝 to_sql，統一寫入邏輯（自動忽略重複資料）"""
     if df is None or df.empty:
         return False
+    _validate_table_name(table_name)
     try:
         df.to_sql(
             table_name,
@@ -55,6 +73,7 @@ def save_to_db(df, table_name, chunksize=500):
 
 def check_exists(table_name, stock_id, date_col="date"):
     """斷點續傳檢查：該 stock_id 是否已有資料"""
+    _validate_table_name(table_name)
     try:
         sql = text(
             f'SELECT 1 FROM {table_name} WHERE stock_id = :sid LIMIT 1'

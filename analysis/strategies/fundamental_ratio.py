@@ -73,7 +73,7 @@ class FundamentalRatioStrategy(Strategy):
         min_cond = min(self.params["min_conditions"], available)
 
         meets = (score >= min_cond).astype(bool)
-        prev_meets = meets.shift(1).fillna(False).astype(bool)
+        prev_meets = meets.shift(1, fill_value=False).astype(bool)
         df.loc[meets & ~prev_meets, "signal"] = 1
         df.loc[~meets & prev_meets, "signal"] = -1
 

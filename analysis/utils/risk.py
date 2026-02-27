@@ -5,6 +5,10 @@
 import numpy as np
 import pandas as pd
 
+from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
+
+_EPS = 1e-12  # 浮點數零值判斷門檻
+
 
 def calc_var(returns: pd.Series, confidence: float = 0.95) -> float:
     """Value at Risk (歷史模擬法)"""
@@ -22,22 +26,22 @@ def calc_cvar(returns: pd.Series, confidence: float = 0.95) -> float:
     return float(tail.mean()) if not tail.empty else var
 
 
-def calc_sharpe(returns: pd.Series, rf: float = 0.015) -> float:
+def calc_sharpe(returns: pd.Series, rf: float = RISK_FREE_RATE) -> float:
     """Sharpe Ratio (年化)"""
-    if len(returns) < 2 or returns.std() == 0:
+    if len(returns) < 2 or returns.std() < _EPS:
         return 0.0
-    excess = returns.mean() - rf / 252
-    return float(excess / returns.std() * np.sqrt(252))
+    excess = returns.mean() - rf / TRADING_DAYS_PER_YEAR
+    return float(excess / returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
-def calc_sortino(returns: pd.Series, rf: float = 0.015) -> float:
+def calc_sortino(returns: pd.Series, rf: float = RISK_FREE_RATE) -> float:
     """Sortino Ratio (年化)"""
     if len(returns) < 2:
         return 0.0
     downside = returns[returns < 0]
-    if downside.empty or downside.std() == 0:
+    if downside.empty or downside.std() < _EPS:
         return 0.0
-    return float((returns.mean() - rf / 252) / downside.std() * np.sqrt(252))
+    return float((returns.mean() - rf / TRADING_DAYS_PER_YEAR) / downside.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
 def calc_beta(stock_returns: pd.Series, market_returns: pd.Series) -> float:
@@ -51,11 +55,11 @@ def calc_beta(stock_returns: pd.Series, market_returns: pd.Series) -> float:
 
 
 def calc_alpha(stock_returns: pd.Series, market_returns: pd.Series,
-               rf: float = 0.015) -> float:
+               rf: float = RISK_FREE_RATE) -> float:
     """Alpha (Jensen's Alpha，年化)"""
     beta = calc_beta(stock_returns, market_returns)
-    stock_annual = stock_returns.mean() * 252
-    market_annual = market_returns.mean() * 252
+    stock_annual = stock_returns.mean() * TRADING_DAYS_PER_YEAR
+    market_annual = market_returns.mean() * TRADING_DAYS_PER_YEAR
     return float(stock_annual - (rf + beta * (market_annual - rf)))
 
 
@@ -70,7 +74,7 @@ def calc_max_drawdown(equity: pd.Series) -> tuple:
         return 0.0, pd.Series(dtype=float), None, None, 0
 
     peak = equity.cummax()
-    drawdown = (equity - peak) / peak
+    drawdown = (equity - peak) / peak.replace(0, np.nan)
 
     max_dd = drawdown.min()
 
@@ -96,7 +100,7 @@ def calc_risk_contribution(weights: np.ndarray, cov_matrix: pd.DataFrame) -> pd.
     w = np.array(weights, dtype=float)
     cov = cov_matrix.values if isinstance(cov_matrix, pd.DataFrame) else np.array(cov_matrix)
     port_vol = np.sqrt(np.dot(w, np.dot(cov, w)))
-    if port_vol == 0:
+    if port_vol < _EPS:
         return pd.Series(0.0, index=cov_matrix.columns if isinstance(cov_matrix, pd.DataFrame) else range(len(w)))
     marginal = np.dot(cov, w) / port_vol
     rc = w * marginal
@@ -108,16 +112,16 @@ def calc_risk_contribution(weights: np.ndarray, cov_matrix: pd.DataFrame) -> pd.
 def calc_portfolio_volatility(weights: np.ndarray, cov_matrix: pd.DataFrame) -> float:
     """投資組合波動率"""
     port_var = np.dot(weights, np.dot(cov_matrix.values, weights))
-    return float(np.sqrt(port_var * 252))
+    return float(np.sqrt(port_var * TRADING_DAYS_PER_YEAR))
 
 
 def calc_information_ratio(stock_returns: pd.Series, benchmark_returns: pd.Series) -> float:
     """Information Ratio"""
     excess = stock_returns - benchmark_returns
     aligned = excess.dropna()
-    if aligned.empty or aligned.std() == 0:
+    if aligned.empty or aligned.std() < _EPS:
         return 0.0
-    return float(aligned.mean() / aligned.std() * np.sqrt(252))
+    return float(aligned.mean() / aligned.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
 def calc_calmar_ratio(annual_return: float, max_drawdown: float) -> float:
@@ -195,7 +199,7 @@ def portfolio_risk_report(
 
             report["VaR_95"] = round(calc_var(port_returns, 0.95) * 100, 2)
             report["CVaR_95"] = round(calc_cvar(port_returns, 0.95) * 100, 2)
-            report["volatility"] = round(port_returns.std() * np.sqrt(252) * 100, 2)
+            report["volatility"] = round(port_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR) * 100, 2)
             report["sharpe"] = round(calc_sharpe(port_returns), 2)
 
             if market_returns is not None:

@@ -1,6 +1,6 @@
 # Stock Analysis - 台灣股市量化交易系統
 
-> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（14 個內建策略）進行回測與風險管理。
+> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（16 個內建策略、11 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。
 
 ## 功能
 
@@ -9,20 +9,25 @@
 - [x] 財務報表 + 股利資料撈取（FinMind + Yahoo Finance）
 - [x] 籌碼面資料撈取（三大法人、融資融券、股權分散、持股比例、借券、借券賣出餘額）
 - [x] 估值面資料撈取（月營收、PER/PBR/殖利率、市值）
+- [x] 產業分類撈取（FinMind taiwan_stock_info）
 - [x] 每日批量更新（FinMind 批量 API，7 次呼叫 < 1 分鐘）
 - [x] 斷點續傳（中斷後重新執行自動跳過已完成股票）
 - [x] 統一限速器（Token-aware delay + 429 自動重試 + 預算控制）
 - [x] 統一日誌系統（RotatingFileHandler + console 輸出）
 - [x] 本地 SQLite 索引，per-dataset 斷點續傳 + 失敗記錄
 
-### 量化分析平台（Streamlit）
-- [x] 個股分析（K 線、技術指標、籌碼、基本面）
+### 量化分析平台（Streamlit，11 個頁面）
+- [x] 個股分析（K 線、技術指標、籌碼、基本面，支援日/週/月K切換）
 - [x] 多維度因子篩選選股
-- [x] 14 個內建交易策略 + 績效報告
-- [x] 多策略組合回測
+- [x] 16 個內建交易策略 + 績效報告
 - [x] 配對交易（Engle-Granger 共整合 + Z-Score）
 - [x] 風險管理（VaR、最大回撤、相關性矩陣）
-- [x] 市場總覽（全市場漲跌、法人動向、估值分佈）
+- [x] 市場總覽（全市場漲跌、法人動向、估值分佈、FRED 經濟指標）
+- [x] 多策略組合回測（4 種權重最佳化：等權/Sharpe最大化/最小波動率/風險平價）
+- [x] 因子分析（IC 回測、因子相關性、有效性排行、動態權重追蹤）
+- [x] 產業輪動模型（營收動能 + 法人流向 → 產業排名）
+- [x] 事件研究（除息/財報事件 CAR/AAR 分析 + 事件策略回測）
+- [x] 機器學習選股（LightGBM + Walk-Forward 回測）
 
 ### 監控
 - [x] Web 監控儀表板（FastAPI + Chart.js，即時追蹤撈取進度）
@@ -70,6 +75,7 @@ uv run python main.py --scanner price_monthly  # 月K價格資料（Yahoo Financ
 uv run python main.py --scanner fundamental    # 財務報表 + 股利
 uv run python main.py --scanner chip           # 籌碼面（三大法人、融資融券等 6 項）
 uv run python main.py --scanner valuation      # 月營收 + PER/PBR + 市值
+uv run python main.py --scanner industry       # 產業分類（FinMind taiwan_stock_info）
 uv run python main.py --scanner all            # 依序執行全部 scanner
 
 # === 每日更新（批量模式，< 1 分鐘） ===
@@ -98,6 +104,7 @@ uv run python -m scanners.fundamental_scanner            # 財報 + 股利
 uv run python -m scanners.chip_scanner                   # 籌碼面
 uv run python -m scanners.chip_scanner --test 2330       # 測試單支
 uv run python -m scanners.valuation_scanner              # 估值面
+uv run python -m scanners.industry_scanner               # 產業分類
 ```
 
 ### 運行測試
@@ -126,18 +133,23 @@ Stock_analysis/
 │   ├── fundamental_scanner.py     # 財報 + 股利（FinMind + Yahoo）
 │   ├── chip_scanner.py            # 籌碼面 6 項（FinMind）
 │   ├── valuation_scanner.py       # 估值面 3 項（FinMind）
+│   ├── industry_scanner.py        # 產業分類（FinMind）
 │   └── daily_updater.py           # 每日批量更新（< 1 分鐘）
 ├── analysis/                      # 量化分析平台（Streamlit）
 │   ├── app.py                     # Streamlit 主入口
-│   ├── pages/                     # 7 個分析頁面
+│   ├── pages/                     # 11 個分析頁面
 │   │   ├── 1_個股分析.py          # K 線、指標、籌碼、基本面
 │   │   ├── 2_因子篩選.py          # 多維度條件過濾選股
-│   │   ├── 3_策略回測.py          # 14 策略 + 績效報告
+│   │   ├── 3_策略回測.py          # 16 策略 + 績效報告
 │   │   ├── 4_配對交易.py          # 共整合 + Z-Score
 │   │   ├── 5_風險管理.py          # VaR、回撤、相關性
 │   │   ├── 6_市場總覽.py          # 全市場漲跌、法人、估值
-│   │   └── 7_策略組合.py          # 多策略組合回測
-│   ├── strategies/                # 14 個交易策略
+│   │   ├── 7_策略組合.py          # 多策略組合回測（4 種權重最佳化）
+│   │   ├── 8_因子分析.py          # IC 回測、因子相關性、動態權重
+│   │   ├── 9_產業輪動.py          # 營收動能 + 法人流向排名
+│   │   ├── 10_事件分析.py         # 除息/財報事件 CAR/AAR
+│   │   └── 11_機器學習.py         # LightGBM 選股 + Walk-Forward
+│   ├── strategies/                # 16 個交易策略
 │   │   ├── base.py                # Strategy ABC + BacktestResult
 │   │   ├── ma_cross.py            # MA 交叉
 │   │   ├── macd_signal.py         # MACD 訊號
@@ -152,35 +164,54 @@ Stock_analysis/
 │   │   ├── value_investing.py     # 價值投資
 │   │   ├── fundamental_ratio.py   # 財報三率
 │   │   ├── free_cash_flow.py      # 自由現金流
-│   │   └── multi_factor.py        # 多因子綜合
-│   └── utils/                     # 分析工具模組
-│       ├── data_loader.py         # 統一 DB 查詢 + @st.cache_data
-│       ├── indicators.py          # pandas/numpy 技術指標
-│       ├── charts.py              # Plotly 圖表工廠
-│       ├── backtester.py          # 回測引擎（台灣手續費/稅）
-│       ├── portfolio_backtester.py # 多策略組合回測引擎
-│       ├── factor_engine.py       # 多因子評分引擎
-│       ├── risk.py                # VaR, CVaR, Sharpe, Sortino, Beta
-│       └── pair_trading.py        # 共整合、Z-Score、半衰期
+│   │   ├── multi_factor.py        # 多因子綜合
+│   │   ├── event_driven.py        # 事件驅動
+│   │   └── ml_factor.py           # 機器學習選股
+│   ├── utils/                     # 分析工具模組
+│   │   ├── data_loader.py         # 統一 DB 查詢 + @st.cache_data
+│   │   ├── indicators.py          # pandas/numpy 技術指標
+│   │   ├── charts.py              # Plotly 圖表工廠
+│   │   ├── backtester.py          # 回測引擎（台灣手續費/稅）
+│   │   ├── portfolio_backtester.py # 多策略組合回測引擎
+│   │   ├── portfolio_optimizer.py # 4 種組合最佳化方法
+│   │   ├── factor_engine.py       # 多因子評分引擎 + 滾動 IC
+│   │   ├── dynamic_weights.py     # 滾動 IC → 動態因子權重
+│   │   ├── sector_rotation.py     # 產業輪動（營收動能 + 法人流向）
+│   │   ├── event_study.py         # 事件研究引擎（CAR/AAR）
+│   │   ├── ml_stock_picker.py     # LightGBM 選股引擎
+│   │   ├── risk.py                # VaR, CVaR, Sharpe, Sortino, Beta
+│   │   └── pair_trading.py        # 共整合、Z-Score、半衰期
+│   └── documents/                 # 功能說明文件（20 個 .md）
 ├── dashboard/                     # 監控儀表板
 │   ├── app.py                     # FastAPI 後端
 │   └── static/index.html          # Chart.js 圓餅圖 + 狀態表格
 ├── scripts/                       # 獨立工具腳本
 │   └── value_investing_report.py  # 價值投資報告產生器
-├── docs/                          # 文件
-│   └── 選股策略藍圖.md            # 選股策略藍圖
-├── tests/                         # 測試套件（169+ 測試）
-│   ├── conftest.py                # pytest fixtures
-│   ├── test_price_scanner.py
-│   ├── test_fundamental_scanner.py
-│   ├── test_chip_scanner.py
-│   ├── test_valuation_scanner.py
-│   ├── test_daily_updater.py
-│   ├── test_strategies.py
-│   ├── test_backtester.py
-│   ├── test_portfolio_backtester.py
-│   ├── test_factor_engine.py
-│   └── test_finmind_api_diagnostic.py
+├── docs/                          # 專案文件
+│   └── 選股策略藍圖.md            # 選股策略藍圖（Phase 1-4）
+├── tests/                         # 測試套件（557 個測試）
+│   ├── conftest.py                # pytest fixtures（28+ 共用 fixture）
+│   ├── test_all_strategies.py     # 12 個策略獨立單元測試（54 項）
+│   ├── test_strategies.py         # 4 個策略深度測試 + 整合驗證（30 項）
+│   ├── test_backtester.py         # 回測引擎測試
+│   ├── test_portfolio_backtester.py  # 組合回測測試
+│   ├── test_portfolio_optimizer.py   # 組合最佳化測試
+│   ├── test_factor_engine.py      # 因子引擎測試
+│   ├── test_dynamic_weights.py    # 動態權重測試
+│   ├── test_sector_rotation.py    # 產業輪動測試
+│   ├── test_event_study.py        # 事件研究測試
+│   ├── test_ml_stock_picker.py    # ML 選股測試
+│   ├── test_price_scanner.py      # 價格撈取測試
+│   ├── test_fundamental_scanner.py   # 財報撈取測試
+│   ├── test_chip_scanner.py       # 籌碼撈取測試
+│   ├── test_valuation_scanner.py  # 估值撈取測試
+│   ├── test_daily_updater.py      # 每日更新測試
+│   ├── test_indicators.py         # 技術指標測試（39 項）
+│   ├── test_risk.py               # 風險指標測試（24 項）
+│   ├── test_pair_trading.py       # 配對交易測試（16 項）
+│   ├── test_data_loader.py        # 資料載入測試（41 項）
+│   ├── test_charts.py             # 圖表函數測試（42 項）
+│   └── test_finmind_api_diagnostic.py  # FinMind API 診斷
 ├── logs/                          # 日誌目錄（.gitignore）
 ├── pyproject.toml                 # 專案設定（uv）
 ├── requirements.txt               # pip 依賴清單
@@ -189,7 +220,7 @@ Stock_analysis/
 
 ## 交易策略
 
-系統內建 14 個交易策略，涵蓋技術面、籌碼面、基本面三大維度：
+系統內建 16 個交易策略，涵蓋技術面、籌碼面、基本面、事件面與機器學習：
 
 | 策略 | 類型 | 說明 |
 |---|---|---|
@@ -207,6 +238,8 @@ Stock_analysis/
 | 財報三率 | 基本面 | 毛利率、營益率、淨利率 |
 | 自由現金流 | 基本面 | 自由現金流正向成長 |
 | 多因子綜合 | 混合 | 技術面(40%) + 籌碼面(30%) + 基本面(30%) |
+| 事件驅動 | 事件面 | 除息/財報事件前買入、事件後賣出 |
+| 機器學習選股 | ML 多因子 | LightGBM 多因子預測分位 + 選股 |
 
 ## 資料庫表格
 
@@ -227,6 +260,7 @@ Stock_analysis/
 | `month_revenue` | FinMind | 月營收 |
 | `stock_per` | FinMind | 本益比 / 股價淨值比 / 殖利率 |
 | `market_value` | FinMind | 市值 |
+| `industry_mapping` | FinMind | 股票產業分類 |
 
 ## 專案技術
 
@@ -236,9 +270,10 @@ Stock_analysis/
 - **資料來源** — FinMind, Yahoo Finance (yfinance), FRED API
 - **資料庫** — Supabase PostgreSQL + 本地 SQLite 索引
 - **分析平台** — Streamlit, Plotly
-- **監控儀表板** — FastAPI, Uvicorn, Chart.js
+- **機器學習** — LightGBM, scikit-learn
 - **統計分析** — statsmodels, scipy
-- **測試** — pytest（169+ 測試）
+- **監控儀表板** — FastAPI, Uvicorn, Chart.js
+- **測試** — pytest（557 個測試）
 
 ## 第三方服務
 

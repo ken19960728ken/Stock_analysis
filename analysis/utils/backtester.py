@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 
 from analysis.strategies.base import BacktestResult, Strategy
+from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
+
+_EPS = 1e-12
 
 
 class Backtester:
@@ -128,18 +131,18 @@ class Backtester:
         else:
             annual_return = 0.0
 
-        # Sharpe Ratio (假設無風險利率 1.5%)
-        rf = 0.015
-        if len(returns) > 1 and returns.std() > 0:
-            excess = returns.mean() - rf / 252
-            sharpe_ratio = excess / returns.std() * np.sqrt(252)
+        # Sharpe Ratio
+        rf = RISK_FREE_RATE
+        if len(returns) > 1 and returns.std() > _EPS:
+            excess = returns.mean() - rf / TRADING_DAYS_PER_YEAR
+            sharpe_ratio = excess / returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
         else:
             sharpe_ratio = 0.0
 
         # Sortino Ratio
         downside = returns[returns < 0]
-        if len(downside) > 1 and downside.std() > 0:
-            sortino_ratio = (returns.mean() - rf / 252) / downside.std() * np.sqrt(252)
+        if len(downside) > 1 and downside.std() > _EPS:
+            sortino_ratio = (returns.mean() - rf / TRADING_DAYS_PER_YEAR) / downside.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
         else:
             sortino_ratio = 0.0
 
