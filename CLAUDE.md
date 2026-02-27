@@ -176,7 +176,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_chip_scanner.py` | ChipScanner 單元測試 |
 | `test_valuation_scanner.py` | ValuationScanner 單元測試 |
 | `test_daily_updater.py` | DailyUpdater 測試（20 項） |
-| `test_strategies.py` | 16 個策略單元測試 |
+| `test_all_strategies.py` | 12 個策略獨立單元測試（54 項） |
+| `test_strategies.py` | 4 個策略深度測試 + 整合驗證（30 項） |
 | `test_backtester.py` | 回測引擎測試 |
 | `test_portfolio_backtester.py` | 組合回測測試 |
 | `test_portfolio_optimizer.py` | 組合最佳化測試（Max Sharpe/Min Vol/Risk Parity/BL） |
