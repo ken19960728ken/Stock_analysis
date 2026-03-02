@@ -14,6 +14,7 @@
 """
 
 import argparse
+import gc
 import sys
 import webbrowser
 from datetime import datetime, timedelta
@@ -37,18 +38,25 @@ from core.logger import setup_logger
 
 logger = setup_logger("strategy_report")
 
+# 每處理 N 支股票後重置連線池，避免連線池耗盡
+CONN_POOL_RESET_INTERVAL = 100
+
 DEFAULT_STOCKS = ["2330", "2317", "2454"]
 
 # 各策略所需的補充資料表（同 3_策略回測.py）
+# 注意：「股權集中度」策略需要 shareholder_count 和 holding_percentage，
+# 實際資料在 chip_holding_pct 表（people, percent），而非 chip_shareholding。
 STRATEGY_DATA_NEEDS = {
     "法人跟單": ["chip_institutional"],
     "融資融券訊號": ["chip_margin"],
-    "股權集中度": ["chip_shareholding"],
+    "股權集中度": ["chip_holding_pct"],
     "財報三率": ["financial_reports"],
     "自由現金流": ["financial_reports", "market_value"],
     "價值投資": ["stock_per", "month_revenue"],
     "多因子綜合": ["chip_institutional", "stock_per"],
     "事件驅動": ["dividend_history"],
+    "趨勢過濾MA": [],
+    "多策略動態組合": ["chip_institutional", "stock_per", "month_revenue"],
 }
 
 
@@ -110,9 +118,10 @@ def load_chip_margin(engine, stock_id: str, start_date: str) -> pd.DataFrame:
     return df
 
 
-def load_chip_shareholding(engine, stock_id: str, start_date: str) -> pd.DataFrame:
+def load_chip_holding_pct(engine, stock_id: str, start_date: str) -> pd.DataFrame:
+    """載入股權分散表（持股級距、人數、比例）"""
     sql = text(
-        "SELECT * FROM chip_shareholding "
+        "SELECT * FROM chip_holding_pct "
         "WHERE stock_id = :sid AND date >= :start ORDER BY date"
     )
     df = pd.read_sql(sql, engine, params={"sid": stock_id, "start": start_date})
@@ -209,11 +218,17 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
                 df = df.merge(extra, on="date", how="left")
 
-        elif table == "chip_shareholding":
-            extra = load_chip_shareholding(engine, stock_id, start_date)
+        elif table == "chip_holding_pct":
+            extra = load_chip_holding_pct(engine, stock_id, start_date)
             if not extra.empty:
+                # chip_holding_pct 表每日有多筆（不同持股級距），
+                # 欄位: date, stock_id, HoldingSharesLevel, people, percent, unit
+                # 聚合為每日一筆：
+                #   shareholder_count = sum(people)  — 總股東人數
+                #   holding_percentage = sum(percent) — 總持股比例
                 agg = extra.groupby("date").agg(
-                    shareholder_count=("shareholder_count", "sum"),
+                    shareholder_count=("people", "sum"),
+                    holding_percentage=("percent", "sum"),
                 ).reset_index().sort_values("date")
                 df = pd.merge_asof(df, agg, on="date", direction="backward")
 
@@ -238,7 +253,8 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
             extra = load_stock_per(engine, stock_id, start_date)
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
-                df = df.merge(extra, on="date", how="left")
+                extra = extra.sort_values("date")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "month_revenue":
             extra = load_month_revenue(engine, stock_id, start_date)
@@ -319,18 +335,42 @@ def calc_benchmark_buyhold(engine, start_date: str,
 
 def backtest_one(engine, stock_id: str, strategy_name: str, strategy,
                  start_date: str, capital: float = 1_000_000):
-    """回傳 (result: BacktestResult | None, name: str)"""
-    name = load_stock_name(engine, stock_id)
-    logger.info(f"回測 {stock_id} {name} ...")
+    """回傳 (result: BacktestResult | None, name: str)
 
-    daily = load_daily_price(engine, stock_id, start_date)
-    if daily.empty or len(daily) < 30:
-        logger.warning(f"  {stock_id} 日K資料不足，跳過")
+    Bug 3 修復：低成交量股票可能收盤價標準差為 0，導致 Bollinger Band
+    和 RSI 等策略在計算技術指標時出現 ZeroDivisionError。
+    在呼叫策略前先檢查收盤價是否有足夠變異性。
+    """
+    name = ""
+    try:
+        name = load_stock_name(engine, stock_id)
+        logger.info(f"回測 {stock_id} {name} ...")
+
+        daily = load_daily_price(engine, stock_id, start_date)
+        if daily.empty or len(daily) < 30:
+            logger.warning(f"  {stock_id} 日K資料不足，跳過")
+            return None, name
+
+        # Bug 3 保護：收盤價標準差接近 0 的股票，技術指標會出現除零錯誤
+        close_std = daily["close"].std()
+        if close_std is None or np.isnan(close_std) or close_std < 1e-8:
+            logger.warning(
+                f"  {stock_id} 收盤價標準差為 0（可能是低流動性或停牌股），跳過"
+            )
+            return None, name
+
+        df = enrich_data(engine, daily, stock_id, strategy_name, start_date)
+        result = Backtester(strategy, capital=capital).run(df)
+        return result, name
+
+    except (KeyError, ZeroDivisionError, ValueError) as e:
+        # 策略計算中仍可能因個別股票的異常資料而失敗，安全跳過
+        logger.warning(f"  {stock_id} {name} 回測失敗（{type(e).__name__}: {e}），跳過")
         return None, name
-
-    df = enrich_data(engine, daily, stock_id, strategy_name, start_date)
-    result = Backtester(strategy, capital=capital).run(df)
-    return result, name
+    except Exception as e:
+        # DB 連線或其他未預期錯誤：記錄但不崩潰整個掃描流程
+        logger.error(f"  {stock_id} {name} 回測異常（{type(e).__name__}: {e}）")
+        return None, name
 
 
 # ---------------------------------------------------------------------------
@@ -514,14 +554,48 @@ def run_report(
     else:
         logger.warning("無法計算 0050 基準")
 
-    # 逐支回測
+    # 逐支回測（Bug 1 修復：每 N 支股票重置連線池，避免連線耗盡）
     results_summary = []
     chart_data = []
+    db_error_count = 0
+    MAX_DB_ERRORS = 5  # 連續 DB 錯誤超過此數則中止
 
-    for sid in stock_list:
-        result, name = backtest_one(
-            engine, sid, strategy_name, strategy, start_date, capital
-        )
+    for idx, sid in enumerate(stock_list):
+        # Bug 1 核心修復：定期重置 DB 連線池
+        if idx > 0 and idx % CONN_POOL_RESET_INTERVAL == 0:
+            try:
+                engine.dispose()
+                gc.collect()
+                logger.info(
+                    f"已處理 {idx}/{len(stock_list)} 支，重置連線池"
+                )
+            except Exception as e:
+                logger.warning(f"連線池重置失敗: {e}")
+
+        try:
+            result, name = backtest_one(
+                engine, sid, strategy_name, strategy, start_date, capital
+            )
+            db_error_count = 0  # 成功則重置 DB 錯誤計數
+        except Exception as e:
+            # 連線池層級的嚴重錯誤（如 DB 不可用）
+            db_error_count += 1
+            logger.error(
+                f"  {sid} DB 層級錯誤（{db_error_count}/{MAX_DB_ERRORS}）: {e}"
+            )
+            if db_error_count >= MAX_DB_ERRORS:
+                logger.error(
+                    f"連續 {MAX_DB_ERRORS} 次 DB 錯誤，嘗試重置連線池後繼續"
+                )
+                try:
+                    engine.dispose()
+                    gc.collect()
+                    db_error_count = 0
+                except Exception:
+                    logger.error("連線池重置失敗，中止掃描")
+                    break
+            continue
+
         if result is None:
             continue
 

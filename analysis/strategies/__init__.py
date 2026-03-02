@@ -15,6 +15,8 @@ from analysis.strategies.margin_signal import MarginSignalStrategy
 from analysis.strategies.ownership_concentration import OwnershipConcentrationStrategy
 from analysis.strategies.event_driven import EventDrivenStrategy
 from analysis.strategies.ml_factor import MLFactorStrategy
+from analysis.strategies.trend_filtered_ma import TrendFilteredMAStrategy
+from analysis.strategies.adaptive_ensemble import AdaptiveEnsembleStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -33,4 +35,6 @@ STRATEGY_MAP = {
     "股權集中度": OwnershipConcentrationStrategy,
     "事件驅動": EventDrivenStrategy,
     "機器學習選股": MLFactorStrategy,
+    "趨勢過濾MA": TrendFilteredMAStrategy,
+    "多策略動態組合": AdaptiveEnsembleStrategy,
 }

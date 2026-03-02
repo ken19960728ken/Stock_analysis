@@ -38,7 +38,21 @@ def get_engine():
         db_url = os.getenv("SUPABASE_URL")
         if not db_url:
             raise RuntimeError("找不到 SUPABASE_URL，請檢查 .env 檔案")
-        _engine = create_engine(db_url)
+        _engine = create_engine(
+            db_url,
+            pool_pre_ping=True,        # 每次使用前先 ping（~6s），偵測斷線自動重連
+            pool_recycle=60,            # 每 60 秒回收連線（Supabase 可能在 60s 後斷線）
+            pool_size=2,               # 最多 2 條連線
+            max_overflow=0,            # 不建立額外連線
+            connect_args={
+                "connect_timeout": 30,  # 連線超時 30 秒
+                "options": "-c statement_timeout=120000",  # 查詢超時 120 秒
+                "keepalives": 1,        # 啟用 TCP keepalive
+                "keepalives_idle": 30,  # 30 秒 idle 後發送 keepalive
+                "keepalives_interval": 10,  # 每 10 秒重試
+                "keepalives_count": 5,  # 5 次失敗後放棄
+            },
+        )
     return _engine
 
 

@@ -101,7 +101,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 → 產業排名 |
 | `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
-| `analysis/strategies/` | 16 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/strategies/` | 18 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
@@ -116,7 +116,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta, 風險貢獻 |
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
 
-#### 策略清單（16 個）
+#### 策略清單（18 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -136,6 +136,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 多因子綜合 | `MultiFactorStrategy` | 技術面(40%)+籌碼面(30%)+基本面(30%) |
 | 事件驅動 | `EventDrivenStrategy` | 事件面 |
 | 機器學習選股 | `MLFactorStrategy` | ML 多因子 |
+| 趨勢過濾MA | `TrendFilteredMAStrategy` | 技術面（MA 交叉 + MA200 趨勢過濾 + 回檔反彈） |
+| 多策略動態組合 | `AdaptiveEnsembleStrategy` | 技術面+籌碼面+基本面 動態加權 |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -218,6 +220,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_core_local_index.py` | core/local_index.py SQLite 索引測試 |
 | `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
 | `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
+| `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

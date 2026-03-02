@@ -24,5 +24,8 @@ logs/
 # 回測報告
 reports/
 
+# 資料快取（本地 Parquet）
+data_cache/
+
 # Claude Code
 .claude/

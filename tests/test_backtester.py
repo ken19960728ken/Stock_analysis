@@ -11,15 +11,17 @@ from analysis.utils.backtester import Backtester
 
 
 class MockBuyHoldStrategy(Strategy):
-    """第一天買、最後一天賣"""
+    """第一天產生買入訊號、倒數第二天產生賣出訊號
+    （Backtester 會將 signal shift 1 日，實際在第二天買、最後一天賣）
+    """
     name = "MockBuyHold"
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
         df["signal"] = 0
-        if len(df) >= 2:
+        if len(df) >= 3:
             df.iloc[0, df.columns.get_loc("signal")] = 1
-            df.iloc[-1, df.columns.get_loc("signal")] = -1
+            df.iloc[-2, df.columns.get_loc("signal")] = -1
         return df
 
 

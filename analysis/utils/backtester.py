@@ -42,6 +42,11 @@ class Backtester:
         if "signal" not in df.columns:
             return BacktestResult()
 
+        # 修正 Look-Ahead Bias：
+        # 策略訊號基於收盤價計算，因此只能在「下一個交易日」執行。
+        # 將 signal 向後 shift 1 日，使買賣在訊號產生的隔日以收盤價成交。
+        df["signal"] = df["signal"].shift(1).fillna(0).astype(int)
+
         # 回測主邏輯
         capital = self.initial_capital
         position = 0
@@ -58,7 +63,7 @@ class Backtester:
             signal = row.get("signal", 0)
 
             if signal == 1 and position == 0:
-                # 買入
+                # 買入（訊號來自前一日收盤，本日執行）
                 buy_price = price * (1 + self.slippage)
                 buy_cost = buy_price * (1 + self.commission)
                 shares = int(capital / buy_cost / 1000) * 1000  # 整張（1000股）
@@ -70,7 +75,7 @@ class Backtester:
                     entry_date = date
 
             elif signal == -1 and position == 1:
-                # 賣出
+                # 賣出（訊號來自前一日收盤，本日執行）
                 sell_price = price * (1 - self.slippage)
                 proceeds = shares * sell_price * (1 - self.commission - self.tax)
                 pnl = proceeds - shares * entry_price * (1 + self.commission)
@@ -169,7 +174,7 @@ class Backtester:
             win_rate = len(wins) / trade_count
             total_profit = wins["pnl"].sum() if not wins.empty else 0
             total_loss = abs(losses["pnl"].sum()) if not losses.empty else 0
-            profit_factor = total_profit / total_loss if total_loss > 0 else float("inf")
+            profit_factor = total_profit / total_loss if total_loss > _EPS else 999.0
             avg_holding_days = trades["holding_days"].mean()
         else:
             win_rate = 0.0

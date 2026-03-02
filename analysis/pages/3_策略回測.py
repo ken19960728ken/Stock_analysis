@@ -26,7 +26,7 @@ from analysis.utils.data_loader import (
     load_daily_price,
     load_chip_institutional,
     load_chip_margin,
-    load_chip_shareholding,
+    load_chip_holding_pct,
     load_financial_reports,
     load_market_value,
     load_month_revenue,
@@ -34,10 +34,12 @@ from analysis.utils.data_loader import (
 )
 
 # 各策略所需的補充資料表
+# 注意：「股權集中度」策略需要 shareholder_count，
+# 實際資料在 chip_holding_pct 表（people 欄位），而非 chip_shareholding。
 STRATEGY_DATA_NEEDS = {
     "法人跟單": ["chip_institutional"],
     "融資融券訊號": ["chip_margin"],
-    "股權集中度": ["chip_shareholding"],
+    "股權集中度": ["chip_holding_pct"],
     "財報三率": ["financial_reports"],
     "自由現金流": ["financial_reports", "market_value"],
     "價值投資": ["stock_per", "month_revenue"],
@@ -75,12 +77,17 @@ def _enrich_data(df: pd.DataFrame, stock_id: str, strategy_name: str) -> pd.Data
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
                 df = df.merge(extra, on="date", how="left")
 
-        elif table == "chip_shareholding":
-            extra = load_chip_shareholding(stock_id)
+        elif table == "chip_holding_pct":
+            extra = load_chip_holding_pct(stock_id)
             if not extra.empty:
-                # 每日期多筆（不同持股級距），聚合為每日一筆
+                # chip_holding_pct 表每日有多筆（不同持股級距），
+                # 欄位: date, stock_id, HoldingSharesLevel, people, percent, unit
+                # 聚合為每日一筆：
+                #   shareholder_count = sum(people)  — 總股東人數
+                #   holding_percentage = sum(percent) — 總持股比例
                 agg = extra.groupby("date").agg(
-                    shareholder_count=("shareholder_count", "sum"),
+                    shareholder_count=("people", "sum"),
+                    holding_percentage=("percent", "sum"),
                 ).reset_index().sort_values("date")
                 df = pd.merge_asof(df, agg, on="date", direction="backward")
 
@@ -105,7 +112,8 @@ def _enrich_data(df: pd.DataFrame, stock_id: str, strategy_name: str) -> pd.Data
             extra = load_stock_per(stock_id)
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
-                df = df.merge(extra, on="date", how="left")
+                extra = extra.sort_values("date")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "month_revenue":
             extra = load_month_revenue(stock_id)

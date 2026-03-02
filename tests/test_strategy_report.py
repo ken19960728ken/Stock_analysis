@@ -257,13 +257,13 @@ class TestListStrategies:
     """測試策略列表輸出"""
 
     def test_lists_all_16_strategies(self, capsys):
-        """應列出所有 16 個策略"""
+        """應列出所有 18 個策略"""
         list_strategies()
         output = capsys.readouterr().out
         from analysis.strategies import STRATEGY_MAP
         for name in STRATEGY_MAP.keys():
             assert name in output
-        assert "16" in output
+        assert "18" in output
 
 
 # ============================================================================
@@ -293,7 +293,11 @@ class TestStrategyDataNeeds:
         """所有需求值都應是 list"""
         for name, needs in STRATEGY_DATA_NEEDS.items():
             assert isinstance(needs, list), f"{name} 需求不是 list"
-            assert len(needs) > 0, f"{name} 需求為空"
+
+    def test_ensemble_strategy_has_needs(self):
+        """多策略動態組合應定義資料需求"""
+        assert "多策略動態組合" in STRATEGY_DATA_NEEDS
+        assert len(STRATEGY_DATA_NEEDS["多策略動態組合"]) > 0
 
 
 # ============================================================================

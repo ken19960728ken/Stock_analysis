@@ -354,15 +354,19 @@ def load_latest_margin_all() -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def load_latest_shareholding_summary_all() -> pd.DataFrame:
-    """取最新大股東持股比例摘要"""
+    """取最新各股持股分散摘要（來自 chip_holding_pct 表）
+
+    chip_holding_pct 欄位: date, stock_id, HoldingSharesLevel, people, percent, unit
+    每支股票每個日期有多筆（不同持股級距），聚合為 total_people 和 total_percent。
+    """
     sql = """
     SELECT stock_id, MAX(date) as date,
-           SUM(holding_percentage) as total_holding_pct,
-           SUM(shareholder_count) as total_shareholder_count
+           SUM(percent) as total_holding_pct,
+           SUM(people) as total_shareholder_count
     FROM (
-        SELECT DISTINCT ON (stock_id, shareholding_range) *
-        FROM chip_shareholding
-        ORDER BY stock_id, shareholding_range, date DESC
+        SELECT DISTINCT ON (stock_id, "HoldingSharesLevel") *
+        FROM chip_holding_pct
+        ORDER BY stock_id, "HoldingSharesLevel", date DESC
     ) latest
     GROUP BY stock_id
     """
@@ -420,19 +424,22 @@ def compute_institutional_consecutive_days_all() -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def compute_shareholder_change_all() -> pd.DataFrame:
-    """股東人數變化（最新 vs 4 週前）"""
+    """股東人數變化（最新 vs 4 週前），來自 chip_holding_pct 表
+
+    chip_holding_pct 欄位: date, stock_id, HoldingSharesLevel, people, percent, unit
+    """
     sql_latest = """
     SELECT DISTINCT ON (stock_id) stock_id,
-           SUM(shareholder_count) OVER (PARTITION BY stock_id, date) as total_count,
+           SUM(people) OVER (PARTITION BY stock_id, date) as total_count,
            date
-    FROM chip_shareholding
+    FROM chip_holding_pct
     ORDER BY stock_id, date DESC
     """
     sql_4w_ago = """
     SELECT DISTINCT ON (stock_id) stock_id,
-           SUM(shareholder_count) OVER (PARTITION BY stock_id, date) as total_count,
+           SUM(people) OVER (PARTITION BY stock_id, date) as total_count,
            date
-    FROM chip_shareholding
+    FROM chip_holding_pct
     WHERE date <= CURRENT_DATE - INTERVAL '28 days'
     ORDER BY stock_id, date DESC
     """

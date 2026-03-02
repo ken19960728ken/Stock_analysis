@@ -30,17 +30,22 @@ class EventDrivenStrategy(Strategy):
 
         # 簡化邏輯：如果有 dividend 欄位，在除息日前買入、後賣出
         if "dividend" in df.columns:
+            df = df.reset_index(drop=True)
             df["signal"] = 0
             entry_before = self.params.get("entry_days_before", 5)
             exit_after = self.params.get("exit_days_after", 10)
 
-            dividend_dates = df[df["dividend"] > 0].index.tolist()
-            for div_idx in dividend_dates:
-                pos = df.index.get_loc(div_idx)
+            dividend_positions = df.index[df["dividend"] > 0].tolist()
+            last_exit_pos = -1  # 追蹤上一個事件的賣出位置，避免訊號重疊
+            for pos in dividend_positions:
                 entry_pos = max(0, pos - entry_before)
                 exit_pos = min(len(df) - 1, pos + exit_after)
+                # 若此事件的買入點在上一個事件的賣出點之前，跳過以避免衝突
+                if entry_pos <= last_exit_pos:
+                    continue
                 df.iloc[entry_pos, df.columns.get_loc("signal")] = 1
                 df.iloc[exit_pos, df.columns.get_loc("signal")] = -1
+                last_exit_pos = exit_pos
         else:
             df["signal"] = 0
 

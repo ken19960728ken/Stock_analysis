@@ -34,6 +34,10 @@ class Strategy(ABC):
     description: str = ""
     params: dict = {}
 
+    def __init__(self):
+        # 每個實例都有自己的 params 副本，避免類別層級共享字典被污染
+        self.params = self.__class__.params.copy()
+
     @abstractmethod
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """
