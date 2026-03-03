@@ -9,7 +9,7 @@ class FreeCashFlowStrategy(Strategy):
     name = "自由現金流"
     description = "營運現金流為正且自由現金流殖利率達標時買入"
     params = {
-        "fcf_yield_threshold": 5.0,
+        "fcf_yield_threshold": 3.0,
         "ocf_positive_required": True,
     }
 
@@ -17,12 +17,29 @@ class FreeCashFlowStrategy(Strategy):
         df = data.copy()
         df["signal"] = 0
 
-        # 偵測營運現金流欄位
+        # 偵測營運現金流欄位（擴大搜尋範圍）
         ocf_col = None
         for c in df.columns:
-            if "cashflowsfromoperating" in c.lower() or "ocf" == c.lower():
+            cl = c.lower()
+            if any(k in cl for k in ["cashflowsfromoperating", "ocf", "operating_cash"]):
                 ocf_col = c
                 break
+
+        # Fallback: 用 NetIncome 作為 OCF 近似值
+        if ocf_col is None:
+            for c in df.columns:
+                cl = c.lower()
+                if any(k in cl for k in ["netincome", "net_income", "稅後淨利"]):
+                    ocf_col = c
+                    break
+
+        # 再 Fallback: 用營業利益
+        if ocf_col is None:
+            for c in df.columns:
+                cl = c.lower()
+                if any(k in cl for k in ["operatingincome", "operating_income", "營業利益"]):
+                    ocf_col = c
+                    break
 
         if ocf_col is None:
             return df

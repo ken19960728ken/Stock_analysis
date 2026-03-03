@@ -101,9 +101,9 @@ class TestMACrossStrategy:
         assert "signal" in result.columns
 
     def test_regime_change_produces_buy(self, sample_stock_id):
-        """下跌轉上漲 → 快線穿越慢線 → buy (golden cross)"""
+        """下跌轉上漲（在高價位，通過趨勢過濾）→ golden cross → buy"""
         dates = pd.date_range("2023-01-01", periods=60, freq="B")
-        # 先跌 20 天，再漲 40 天 → 快線從下方穿越慢線
+        # 先跌 20 天，再漲 40 天
         close = np.concatenate([
             np.linspace(520, 490, 20),
             np.linspace(490, 570, 40),
@@ -114,7 +114,8 @@ class TestMACrossStrategy:
             "close": close, "volume": [30_000_000] * 60,
         })
         s = MACrossStrategy()
-        s.set_params(fast_period=5, slow_period=20)
+        # 用短趨勢週期讓金叉時 close > trend_ma
+        s.set_params(fast_period=5, slow_period=20, trend_period=10)
         result = s.generate_signals(df)
         assert (result["signal"] == 1).any()
 
@@ -131,7 +132,7 @@ class TestMACrossStrategy:
             "close": close, "volume": [30_000_000] * 60,
         })
         s = MACrossStrategy()
-        s.set_params(fast_period=5, slow_period=20)
+        s.set_params(fast_period=5, slow_period=20, trend_period=30)
         result = s.generate_signals(df)
         assert (result["signal"] == -1).any()
 
@@ -220,10 +221,10 @@ class TestBollingerStrategy:
         assert (r_narrow["signal"] != 0).sum() >= (r_wide["signal"] != 0).sum()
 
     def test_buy_on_lower_band_break(self, sample_stock_id):
-        """價格突然暴跌跌破下軌 → buy signal"""
+        """價格突然暴跌跌破下軌 + RSI 超賣 → buy signal"""
         np.random.seed(77)
         dates = pd.date_range("2023-01-01", periods=30, freq="B")
-        # 前 25 天穩定波動（建立 BB），第 26 天起突然暴跌
+        # 前 25 天穩定波動（建立 BB），第 26 天起突然暴跌（需夠深讓 RSI < 35）
         close = np.concatenate([
             500 + np.random.randn(25) * 3,
             np.array([480, 470, 460, 450, 440]),  # 階梯式暴跌
@@ -234,7 +235,8 @@ class TestBollingerStrategy:
             "close": close, "volume": [1_000_000] * 30,
         })
         s = BollingerStrategy()
-        s.set_params(period=20, std_dev=2.0)
+        # 放寬 RSI 門檻使測試容易觸發
+        s.set_params(period=20, std_dev=2.0, rsi_oversold=50)
         result = s.generate_signals(df)
         assert (result["signal"] == 1).any()
 
@@ -313,15 +315,32 @@ class TestParabolicSARStrategy:
         result = s.generate_signals(sample_ohlcv_50d)
         assert "signal" in result.columns
 
-    def test_trend_data_has_signals(self, ohlcv_uptrend):
-        """趨勢資料 → SAR 反轉 → 有訊號"""
+    def test_trend_data_has_signals(self, sample_stock_id):
+        """趨勢反轉資料 → SAR 反轉 + ADX 過濾 → 有訊號"""
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=60, freq="B")
+        # 先跌後漲，確保 SAR 有反轉機會
+        close = np.concatenate([
+            np.linspace(550, 480, 25),  # 下跌
+            np.linspace(482, 580, 35),  # 反彈
+        ])
+        noise = np.random.randn(60) * 3
+        close = close + noise
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 2, "high": close + 5, "low": close - 5,
+            "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 60),
+        })
         s = ParabolicSARStrategy()
-        result = s.generate_signals(ohlcv_uptrend)
+        s.set_params(adx_threshold=10)
+        result = s.generate_signals(df)
         assert (result["signal"] != 0).sum() > 0
 
     def test_volatile_data_has_signals(self, ohlcv_volatile):
         """高波動資料 → 多次 SAR 反轉"""
         s = ParabolicSARStrategy()
+        # 短資料降低 ADX 門檻
+        s.set_params(adx_threshold=10)
         result = s.generate_signals(ohlcv_volatile)
         assert (result["signal"] != 0).sum() > 0
 
@@ -347,9 +366,9 @@ class TestHeikinAshiStrategy:
         assert "signal" in result.columns
 
     def test_uptrend_bullish_signal(self, ohlcv_uptrend):
-        """持續上漲 → 連續看漲 HA → buy"""
+        """持續上漲 → 連續看漲 HA + 趨勢確認 → buy"""
         s = HeikinAshiStrategy()
-        s.set_params(confirm_bars=2)
+        s.set_params(confirm_bars=2, trend_period=10)
         result = s.generate_signals(ohlcv_uptrend)
         assert (result["signal"] == 1).any()
 
@@ -387,7 +406,7 @@ class TestDualThrustStrategy:
         assert "signal" in result.columns
 
     def test_volatile_data_breakouts(self, sample_stock_id):
-        """高波動 + 真實 open/close 差異 → 突破訊號"""
+        """高波動 + 真實 open/close 差異 + 量確認 → 突破訊號"""
         np.random.seed(42)
         dates = pd.date_range("2023-01-01", periods=60, freq="B")
         # open ≈ 前日 close + 隨機跳空，close 基於日內波動
@@ -397,13 +416,16 @@ class TestDualThrustStrategy:
         open_ = close - intraday  # open 和 close 有獨立的大幅差異
         high = np.maximum(open_, close) + np.abs(np.random.randn(60) * 2)
         low = np.minimum(open_, close) - np.abs(np.random.randn(60) * 2)
+        # 設定高成交量以通過量確認
+        volume = np.random.randint(30_000_000, 50_000_000, 60)
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
             "open": open_, "high": high, "low": low,
-            "close": close, "volume": [30_000_000] * 60,
+            "close": close, "volume": volume,
         })
         s = DualThrustStrategy()
-        s.set_params(k1=0.3, k2=0.3)
+        # 用較小 k 值使突破容易觸發，放寬量比要求
+        s.set_params(k1=0.3, k2=0.3, volume_ratio=0.5)
         result = s.generate_signals(df)
         assert (result["signal"] != 0).sum() > 0
 
@@ -435,12 +457,13 @@ class TestInstitutionalStrategy:
     """法人跟單策略"""
 
     def test_consecutive_buy_signal(self, sample_stock_id):
-        """連續 3 日買超 → buy"""
-        dates = pd.date_range("2023-01-01", periods=20, freq="B")
-        net_buy = [0] * 10 + [100, 200, 300] + [0] * 7
+        """連續 5 日買超 + 價格在 MA20 上方 → buy"""
+        dates = pd.date_range("2023-01-01", periods=30, freq="B")
+        # 用上漲趨勢確保 close > MA20
+        net_buy = [0] * 20 + [100, 200, 300, 400, 500] + [0] * 5
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
-            "close": [500 + i for i in range(20)],
+            "close": [500 + i * 2 for i in range(30)],
             "institutional_buy": net_buy,
         })
         s = InstitutionalStrategy()
@@ -448,12 +471,12 @@ class TestInstitutionalStrategy:
         assert (result["signal"] == 1).any()
 
     def test_consecutive_sell_signal(self, sample_stock_id):
-        """連續 3 日賣超 → sell"""
-        dates = pd.date_range("2023-01-01", periods=20, freq="B")
-        net_buy = [0] * 10 + [-100, -200, -300] + [0] * 7
+        """連續 5 日賣超 → sell"""
+        dates = pd.date_range("2023-01-01", periods=30, freq="B")
+        net_buy = [0] * 20 + [-100, -200, -300, -400, -500] + [0] * 5
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
-            "close": [500 - i for i in range(20)],
+            "close": [500 - i for i in range(30)],
             "institutional_buy": net_buy,
         })
         s = InstitutionalStrategy()
@@ -616,17 +639,18 @@ class TestMultiFactorStrategyExtended:
 # ============================================================================
 
 class TestEventDrivenStrategy:
-    """事件驅動策略"""
+    """事件驅動策略 — 除息後買入等待填息"""
 
     def test_dividend_event_signals(self, sample_stock_id):
-        """有 dividend 欄位 → 事件前買入、事件後賣出"""
-        dates = pd.date_range("2023-01-01", periods=30, freq="B")
-        dividend = [0] * 15 + [2.5] + [0] * 14
+        """有 dividend 欄位 → 除息後買入、持有至填息"""
+        n = 80
+        dates = pd.date_range("2023-01-01", periods=n, freq="B")
+        dividend = [0] * 10 + [15.0] + [0] * (n - 11)  # 高殖利率除息
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
-            "close": [500] * 30,
-            "open": [500] * 30, "high": [505] * 30, "low": [495] * 30,
-            "volume": [1_000_000] * 30,
+            "close": [500] * n,
+            "open": [500] * n, "high": [505] * n, "low": [495] * n,
+            "volume": [1_000_000] * n,
             "dividend": dividend,
         })
         s = EventDrivenStrategy()
@@ -659,16 +683,31 @@ class TestEventDrivenStrategy:
 
     def test_set_params(self):
         s = EventDrivenStrategy()
-        s.set_params(entry_days_before=10, exit_days_after=20)
-        assert s.params["entry_days_before"] == 10
-        assert s.params["exit_days_after"] == 20
+        s.set_params(entry_days_after=5, exit_days_after=30)
+        assert s.params["entry_days_after"] == 5
+        assert s.params["exit_days_after"] == 30
 
-    def test_signal_values_valid(self, sample_stock_id):
-        dates = pd.date_range("2023-01-01", periods=30, freq="B")
-        dividend = [0] * 10 + [3.0] + [0] * 19
+    def test_low_yield_filtered_out(self, sample_stock_id):
+        """小配息（殖利率 < 門檻）→ 不觸發"""
+        n = 80
+        dates = pd.date_range("2023-01-01", periods=n, freq="B")
+        dividend = [0] * 10 + [0.5] + [0] * (n - 11)  # 殖利率 0.1% 太低
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
-            "close": [500] * 30,
+            "close": [500] * n,
+            "dividend": dividend,
+        })
+        s = EventDrivenStrategy()
+        result = s.generate_signals(df)
+        assert (result["signal"] == 0).all()
+
+    def test_signal_values_valid(self, sample_stock_id):
+        n = 80
+        dates = pd.date_range("2023-01-01", periods=n, freq="B")
+        dividend = [0] * 10 + [15.0] + [0] * (n - 11)
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "close": [500] * n,
             "dividend": dividend,
         })
         s = EventDrivenStrategy()

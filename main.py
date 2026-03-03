@@ -21,6 +21,8 @@ Usage:
     python main.py --reset-failures market_value  # 清除指定 dataset 失敗記錄
     python main.py --dashboard              # 啟動監控儀表板 (http://localhost:8050)
     python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
+    python main.py --pick-stocks                          # 每日選股報告
+    python main.py --pick-stocks --pick-top 10 --pick-days 7  # 自訂參數
     python main.py --report                              # 列出所有策略
     python main.py --report "MA 交叉" --report-all       # 全市場 MA 交叉回測報告
     python main.py --report "法人跟單" --report-stocks 2330 2317  # 指定股票回測報告
@@ -183,12 +185,10 @@ def run_schedule():
         # 5. 計算到下個整點的秒數
         now = datetime.now()
         seconds_to_next_hour = 3600 - (now.minute * 60 + now.second)
-        next_hour = now.replace(
-            minute=0, second=0, microsecond=0
-        ).replace(hour=now.hour + 1 if now.hour < 23 else 0)
+        next_hour = now + timedelta(seconds=seconds_to_next_hour)
         logger.info(
             f"本輪完成，等待 {seconds_to_next_hour} 秒後"
-            f"（約 {next_hour.strftime('%H:%M')}）開始下一輪"
+            f"（約 {next_hour.strftime('%m/%d %H:%M')}）開始下一輪"
         )
 
         try:
@@ -285,6 +285,24 @@ def main():
         metavar="TABLE_NAME",
         help="清除失敗記錄（不指定表名則清除全部）",
     )
+    # --- 每日選股報告 ---
+    parser.add_argument(
+        "--pick-stocks",
+        action="store_true",
+        help="執行每日選股報告",
+    )
+    parser.add_argument(
+        "--pick-top",
+        type=int,
+        default=20,
+        help="選股報告 Top N（預設 20）",
+    )
+    parser.add_argument(
+        "--pick-days",
+        type=int,
+        default=5,
+        help="考慮最近 N 天的訊號（預設 5）",
+    )
     # --- 策略回測報告 ---
     parser.add_argument(
         "--report",
@@ -323,6 +341,12 @@ def main():
         help="策略參數覆蓋（格式: key=value）",
     )
     args = parser.parse_args()
+
+    # --pick-stocks：每日選股報告
+    if args.pick_stocks:
+        from scripts.daily_stock_picker import run_daily_pick
+        run_daily_pick(top_n=args.pick_top, signal_days=args.pick_days)
+        return
 
     # --report：策略回測報告
     if args.report is not None:

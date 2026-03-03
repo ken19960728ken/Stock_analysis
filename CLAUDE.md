@@ -43,6 +43,12 @@ uv run python main.py --show-failures          # 顯示各 dataset 失敗統計
 uv run python main.py --reset-failures         # 清除全部失敗記錄
 uv run python main.py --scanner chip --budget 50  # 限制 FinMind API 預算
 
+# === 每日選股報告 ===
+uv run python main.py --pick-stocks                         # 每日選股報告（Top 20）
+uv run python main.py --pick-stocks --pick-top 10 --pick-days 7  # 自訂參數
+uv run python scripts/daily_stock_picker.py                  # 直接執行
+uv run python scripts/daily_stock_picker.py --top 10 --days 7 --output reports/
+
 # === 策略回測報告 ===
 uv run python main.py --report                              # 列出所有策略
 uv run python main.py --report "MA 交叉" --report-all       # 全市場 MA 交叉回測報告
@@ -151,7 +157,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Script | Description |
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
-| `strategy_report.py` | 通用策略掃描回測報告（16 策略 + 0050 基準比較） |
+| `strategy_report.py` | 通用策略掃描回測報告（18 策略 + 0050 基準比較） |
+| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾） |
 
 ### Scanner 模組 `scanners/`
 
@@ -221,6 +228,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
 | `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
 | `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項） |
+| `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

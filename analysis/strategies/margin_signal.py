@@ -1,4 +1,4 @@
-"""融資融券訊號策略 — 融資餘額減少 + 股價上漲 = 籌碼沉澱"""
+"""融資融券訊號策略 — 融資餘額減少 + 股價上漲 + MA 趨勢確認 = 籌碼沉澱"""
 
 import pandas as pd
 
@@ -7,20 +7,23 @@ from analysis.strategies.base import Strategy
 
 class MarginSignalStrategy(Strategy):
     name = "融資融券訊號"
-    description = "融資餘額減少 + 股價上漲 = 籌碼沉澱，買入訊號"
+    description = "融資餘額減少 + 股價上漲 + MA 趨勢確認 = 籌碼沉澱，買入訊號"
     params = {
-        "margin_change_pct": -5.0,
-        "lookback_days": 5,
+        "margin_change_pct": -10.0,
+        "lookback_days": 10,
+        "require_price_ma_up": True,
     }
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
         df["signal"] = 0
 
-        # 偵測融資餘額欄位
+        # 偵測融資餘額欄位（修正運算子優先級）
         margin_col = None
         for c in df.columns:
-            if "margin_purchase_balance" in c.lower() or "margin" in c.lower() and "short" not in c.lower():
+            if "margin_purchase_balance" in c.lower() or (
+                "margin" in c.lower() and "short" not in c.lower()
+            ):
                 margin_col = c
                 break
 
@@ -41,6 +44,12 @@ class MarginSignalStrategy(Strategy):
         buy_cond = (margin_pct_change <= threshold) & price_up
         # 賣出：融資餘額大增（> |threshold|）且股價下跌
         sell_cond = (margin_pct_change >= abs(threshold)) & price_down
+
+        # MA20 趨勢確認：要求 MA20 向上
+        if self.params.get("require_price_ma_up", False) and "close" in df.columns:
+            ma20 = df["close"].rolling(20, min_periods=5).mean()
+            ma20_up = ma20 > ma20.shift(5)
+            buy_cond = buy_cond & ma20_up
 
         buy_cond = buy_cond.eq(True)
         sell_cond = sell_cond.eq(True)

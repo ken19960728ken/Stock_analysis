@@ -32,20 +32,18 @@ from analysis.utils.indicators import _ema, _sma
 class TrendFilteredMAStrategy(Strategy):
     name = "趨勢過濾MA"
     description = "MA 交叉 + MA200 趨勢過濾 + 回檔反彈 + 最低持有期"
-
-    def __init__(self):
-        self.params = {
-            "fast_period": 10,          # 快線週期（原始 5 太短，改為 10）
-            "slow_period": 40,          # 慢線週期（原始 20 太短，改為 40）
-            "trend_period": 200,        # 趨勢判斷均線週期
-            "min_holding_days": 10,     # 最低持有天數
-            "atr_period": 14,           # ATR 計算週期
-            "atr_threshold": 1.0,       # ATR 百分比閾值（%），低於此值不交易
-            "use_trend_filter": True,   # 是否啟用趨勢過濾
-            "use_atr_filter": True,     # 是否啟用波動過濾
-            "trend_exit": True,         # 是否啟用跌破趨勢線賣出
-            "use_pullback_entry": True, # 是否啟用回檔反彈進場
-        }
+    params = {
+        "fast_period": 10,          # 快線週期（原始 5 太短，改為 10）
+        "slow_period": 40,          # 慢線週期（原始 20 太短，改為 40）
+        "trend_period": 200,        # 趨勢判斷均線週期
+        "min_holding_days": 15,     # 最低持有天數
+        "atr_period": 14,           # ATR 計算週期
+        "atr_threshold": 0.8,       # ATR 百分比閾值（%），低於此值不交易
+        "use_trend_filter": True,   # 是否啟用趨勢過濾
+        "use_atr_filter": True,     # 是否啟用波動過濾
+        "trend_exit": True,         # 是否啟用跌破趨勢線賣出
+        "use_pullback_entry": True, # 是否啟用回檔反彈進場
+    }
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()

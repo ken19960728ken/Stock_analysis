@@ -201,28 +201,35 @@ class TestMarginSignalStrategy:
 class TestOwnershipConcentrationStrategy:
     """股權集中度策略"""
 
-    def test_holder_increase_shareholder_decrease_buy(self, sample_shareholding_8w):
-        """大股東增+散戶減 → buy"""
+    def test_holder_increase_shareholder_decrease_buy(self, sample_stock_id):
+        """大股東增+散戶減 → buy（需足夠長的日資料使 shift(20) 有效）"""
+        dates = pd.date_range("2023-01-01", periods=30, freq="B")
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "close": [580 + i * 2 for i in range(30)],
+            "holding_percentage": [25.0 + i * 0.1 for i in range(30)],
+            "shareholder_count": [10000 - i * 50 for i in range(30)],
+        })
         s = OwnershipConcentrationStrategy()
-        result = s.generate_signals(sample_shareholding_8w)
+        result = s.generate_signals(df)
         assert "signal" in result.columns
         assert (result["signal"] == 1).any()
 
     def test_only_holder_increase_no_buy(self, sample_stock_id):
         """只有大股東增、股東人數也增 → 不買"""
-        dates = pd.date_range("2023-01-01", periods=8, freq="W")
+        dates = pd.date_range("2023-01-01", periods=30, freq="B")
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
-            "close": [580 + i * 2 for i in range(8)],
-            "holding_percentage": [25.0 + i * 0.5 for i in range(8)],
-            "shareholder_count": [10000 + i * 200 for i in range(8)],
+            "close": [580 + i * 2 for i in range(30)],
+            "holding_percentage": [25.0 + i * 0.1 for i in range(30)],
+            "shareholder_count": [10000 + i * 50 for i in range(30)],
         })
         s = OwnershipConcentrationStrategy()
         result = s.generate_signals(df)
         assert not (result["signal"] == 1).any()
 
-    def test_forward_fill_weekly_data(self, sample_shareholding_8w):
-        """週報資料正常處理"""
+    def test_short_data_no_crash(self, sample_shareholding_8w):
+        """短資料不崩潰"""
         s = OwnershipConcentrationStrategy()
         result = s.generate_signals(sample_shareholding_8w)
         assert len(result) == len(sample_shareholding_8w)

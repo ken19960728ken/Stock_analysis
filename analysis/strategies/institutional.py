@@ -1,4 +1,4 @@
-"""法人跟單策略 — 連續 N 日買超進場"""
+"""法人跟單策略 — 連續 N 日買超 + 價格動能確認進場"""
 
 import pandas as pd
 
@@ -7,8 +7,8 @@ from analysis.strategies.base import Strategy
 
 class InstitutionalStrategy(Strategy):
     name = "法人跟單"
-    description = "法人連續 N 日買超買入，連續 N 日賣超賣出"
-    params = {"consecutive_days": 3}
+    description = "法人連續 N 日買超 + 價格在 MA20 上方 → 買入"
+    params = {"consecutive_days": 5}
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -37,13 +37,15 @@ class InstitutionalStrategy(Strategy):
             consecutive_buy = consecutive_buy + buying.shift(i).fillna(0).astype(int)
             consecutive_sell = consecutive_sell + selling.shift(i).fillna(0).astype(int)
 
-        df.loc[
-            (consecutive_buy >= n) & (consecutive_buy.shift(1) < n),
-            "signal"
-        ] = 1
-        df.loc[
-            (consecutive_sell >= n) & (consecutive_sell.shift(1) < n),
-            "signal"
-        ] = -1
+        buy_cond = (consecutive_buy >= n) & (consecutive_buy.shift(1) < n)
+        sell_cond = (consecutive_sell >= n) & (consecutive_sell.shift(1) < n)
+
+        # 價格動能確認：價格需在 MA20 上方（不逆勢跟單）
+        if "close" in df.columns:
+            ma20 = df["close"].rolling(20, min_periods=1).mean()
+            buy_cond = buy_cond & (df["close"] > ma20)
+
+        df.loc[buy_cond, "signal"] = 1
+        df.loc[sell_cond, "signal"] = -1
 
         return df

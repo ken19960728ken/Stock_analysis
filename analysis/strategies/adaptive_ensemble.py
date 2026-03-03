@@ -30,29 +30,27 @@ from analysis.utils.indicators import _ema, _sma
 class AdaptiveEnsembleStrategy(Strategy):
     name = "多策略動態組合"
     description = "法人跟單 + 價值投資 + 趨勢動能 三維度共識組合"
-
-    def __init__(self):
-        self.params = {
-            # 子策略權重
-            "institutional_weight": 0.40,    # 法人權重（Sharpe 最高）
-            "value_weight": 0.30,            # 價值投資權重
-            "trend_weight": 0.30,            # 趨勢動能權重
-            # 進出場閾值
-            "buy_threshold": 0.5,            # 加權分數 > 此值才買入
-            "sell_threshold": -0.3,          # 加權分數 < 此值才賣出
-            "min_agree": 2,                  # 至少 N 個子策略同意
-            # 法人跟單參數
-            "inst_consecutive_days": 3,      # 法人連續買超天數
-            # 價值投資參數
-            "pe_threshold": 20,              # PE 上限
-            "dividend_yield_min": 2.0,       # 殖利率下限
-            # 趨勢動能參數
-            "trend_period": 60,              # 趨勢判斷均線
-            "fast_period": 10,               # 快線
-            "slow_period": 30,               # 慢線
-            # 持有控制
-            "min_holding_days": 15,          # 最低持有天數
-        }
+    params = {
+        # 子策略權重
+        "institutional_weight": 0.40,    # 法人權重（Sharpe 最高）
+        "value_weight": 0.30,            # 價值投資權重
+        "trend_weight": 0.30,            # 趨勢動能權重
+        # 進出場閾值
+        "buy_threshold": 0.4,            # 加權分數 > 此值才買入
+        "sell_threshold": -0.3,          # 加權分數 < 此值才賣出
+        "min_agree": 2,                  # 至少 N 個子策略同意
+        # 法人跟單參數
+        "inst_consecutive_days": 3,      # 法人連續買超天數
+        # 價值投資參數
+        "pe_threshold": 20,              # PE 上限
+        "dividend_yield_min": 2.0,       # 殖利率下限
+        # 趨勢動能參數
+        "trend_period": 60,              # 趨勢判斷均線
+        "fast_period": 10,               # 快線
+        "slow_period": 30,               # 慢線
+        # 持有控制
+        "min_holding_days": 20,          # 最低持有天數
+    }
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()

@@ -1,5 +1,10 @@
 """
-事件驅動策略 — 根據除息/財報等事件產生交易訊號
+事件驅動策略 — 除息後折價買入，等待填息獲利
+
+改進原理：
+- 原始策略在除息前買入、除息後賣出 → 買在高點賣在低點（除息扣股價）
+- 修正為除息後買入（折價進場），持有 60 天等待填息
+- 新增殖利率門檻過濾，避免買入小配息股
 """
 
 import pandas as pd
@@ -9,11 +14,12 @@ from analysis.strategies.base import Strategy
 
 class EventDrivenStrategy(Strategy):
     name = "事件驅動"
-    description = "根據除息/財報等事件，在事件前買入、事件後賣出"
+    description = "除息後折價買入，等待填息獲利"
     params = {
         "event_type": "dividend",
-        "entry_days_before": 5,
-        "exit_days_after": 10,
+        "entry_days_after": 3,       # 除息日後 N 天買入（等價格穩定）
+        "exit_days_after": 60,       # 持有天數（填息通常需 1-2 個月）
+        "min_dividend_yield": 2.0,   # 最低殖利率門檻（%）
     }
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -28,21 +34,33 @@ class EventDrivenStrategy(Strategy):
         if "signal" in df.columns:
             return df
 
-        # 簡化邏輯：如果有 dividend 欄位，在除息日前買入、後賣出
+        # 簡化邏輯：如果有 dividend 欄位，在除息日後買入、持有至填息
         if "dividend" in df.columns:
             df = df.reset_index(drop=True)
             df["signal"] = 0
-            entry_before = self.params.get("entry_days_before", 5)
-            exit_after = self.params.get("exit_days_after", 10)
+            entry_after = self.params.get("entry_days_after", 3)
+            exit_after = self.params.get("exit_days_after", 60)
+            min_yield = self.params.get("min_dividend_yield", 2.0)
 
             dividend_positions = df.index[df["dividend"] > 0].tolist()
-            last_exit_pos = -1  # 追蹤上一個事件的賣出位置，避免訊號重疊
+            last_exit_pos = -1
+
             for pos in dividend_positions:
-                entry_pos = max(0, pos - entry_before)
+                # 殖利率過濾：dividend / close * 100
+                close_at_ex = df["close"].iloc[pos] if pos < len(df) else None
+                if close_at_ex is not None and close_at_ex > 0:
+                    div_yield = df["dividend"].iloc[pos] / close_at_ex * 100
+                    if div_yield < min_yield:
+                        continue
+
+                entry_pos = min(len(df) - 1, pos + entry_after)
                 exit_pos = min(len(df) - 1, pos + exit_after)
-                # 若此事件的買入點在上一個事件的賣出點之前，跳過以避免衝突
+
                 if entry_pos <= last_exit_pos:
                     continue
+                if entry_pos >= exit_pos:
+                    continue
+
                 df.iloc[entry_pos, df.columns.get_loc("signal")] = 1
                 df.iloc[exit_pos, df.columns.get_loc("signal")] = -1
                 last_exit_pos = exit_pos
