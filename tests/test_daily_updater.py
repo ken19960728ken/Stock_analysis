@@ -137,7 +137,7 @@ class TestDailyUpdaterFetchPrice:
         )
 
         result = updater._fetch_price("2023-01-03")
-        assert result is True
+        assert result == "ok"
 
         # Check save_to_db was called with mapped columns
         saved_df = mock_db_save.call_args[0][0]
@@ -148,37 +148,54 @@ class TestDailyUpdaterFetchPrice:
         assert "min" not in saved_df.columns
         assert "Trading_Volume" not in saved_df.columns
 
-    def test_fetch_price_empty_returns_false(
+    def test_fetch_price_empty_returns_no_data(
         self, mock_finmind_client, mock_rate_limiter, mock_db_save
     ):
-        """FinMind returns empty DataFrame -> return False"""
+        """FinMind returns empty DataFrame -> return 'no_data'"""
         updater = DailyUpdater()
         updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
 
         result = updater._fetch_price("2023-01-01")
-        assert result is False
+        assert result == "no_data"
 
-    def test_fetch_price_none_returns_false(
+    def test_fetch_price_none_returns_no_data(
         self, mock_finmind_client, mock_rate_limiter, mock_db_save
     ):
-        """FinMind returns None -> return False"""
+        """FinMind returns None -> return 'no_data'"""
         updater = DailyUpdater()
         updater.fm_loader.taiwan_stock_daily.return_value = None
 
         result = updater._fetch_price("2023-01-01")
-        assert result is False
+        assert result == "no_data"
 
     def test_fetch_price_api_exception(
         self, mock_finmind_client, mock_rate_limiter, mock_db_save
     ):
-        """API throws exception -> return False, no crash"""
+        """API throws exception -> return 'no_data', no crash"""
         updater = DailyUpdater()
         updater.fm_loader.taiwan_stock_daily.side_effect = Exception(
             "API Error"
         )
 
         result = updater._fetch_price("2023-01-03")
-        assert result is False
+        assert result == "no_data"
+
+    def test_fetch_price_write_error(
+        self,
+        mock_finmind_client,
+        mock_rate_limiter,
+        mock_db_save,
+        sample_daily_price_finmind_data,
+    ):
+        """DB write fails -> return 'write_error' (not 'no_data')"""
+        updater = DailyUpdater()
+        updater.fm_loader.taiwan_stock_daily.return_value = (
+            sample_daily_price_finmind_data
+        )
+        mock_db_save.return_value = False
+
+        result = updater._fetch_price("2023-01-03")
+        assert result == "write_error"
 
     def test_fetch_price_column_selection(
         self,

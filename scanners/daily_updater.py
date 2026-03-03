@@ -44,10 +44,14 @@ class DailyUpdater:
         logger.info(f"=== 每日更新開始: {date_str} ===")
 
         # 1. 價格資料
-        price_ok = self._fetch_price(date_str)
-        if not price_ok:
+        price_result = self._fetch_price(date_str)
+        if price_result == "no_data":
             logger.info(f"{date_str} 無價格資料（非交易日），跳過全部更新")
             return
+
+        price_ok = price_result == "ok"
+        if not price_ok:
+            logger.warning(f"{date_str} 價格資料寫入失敗，仍繼續更新籌碼資料")
 
         # 2. 籌碼資料（6 個 dataset）
         chip_results = self._fetch_chip(date_str)
@@ -61,7 +65,13 @@ class DailyUpdater:
         )
 
     def _fetch_price(self, date_str):
-        """批量取得全市場當日價格。回傳 True 表示有資料（交易日）。"""
+        """批量取得全市場當日價格。
+
+        回傳:
+            "ok"         — 取得資料且寫入成功
+            "no_data"    — 無資料（非交易日）
+            "write_error" — 取得資料但寫入失敗
+        """
         logger.info(f"[價格] 批量查詢 {date_str} ...")
 
         try:
@@ -73,10 +83,10 @@ class DailyUpdater:
             df = self.limiter.call_with_retry(_call)
         except Exception as e:
             logger.error(f"[價格] 查詢失敗: {e}")
-            return False
+            return "no_data"
 
         if df is None or df.empty:
-            return False
+            return "no_data"
 
         # 欄位映射: FinMind → daily_price schema
         col_map = {
@@ -96,7 +106,7 @@ class DailyUpdater:
         row_count = len(df) if ok else 0
         logger.info(f"[價格] 寫入 {row_count} 筆")
         self.limiter.wait()
-        return ok
+        return "ok" if ok else "write_error"
 
     def _fetch_chip(self, date_str):
         """批量取得 6 個籌碼 dataset。回傳 dict: {table_name: bool}。"""

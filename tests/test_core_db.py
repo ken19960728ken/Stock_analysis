@@ -91,6 +91,38 @@ class TestSaveToDb:
             result = save_to_db(df, "daily_price")
             assert result is False
 
+    @patch("core.db.dispose_engine")
+    @patch("core.db.get_engine")
+    def test_connection_error_retries_once(self, mock_engine, mock_dispose):
+        """SSL/connection error triggers dispose + retry"""
+        engine = MagicMock()
+        mock_engine.return_value = engine
+        df = pd.DataFrame({"a": [1]})
+        from sqlalchemy.exc import OperationalError
+        ssl_err = OperationalError(
+            "statement", {}, Exception("SSL connection has been closed unexpectedly")
+        )
+        with patch.object(df, "to_sql", side_effect=[ssl_err, None]):
+            result = save_to_db(df, "daily_price")
+            assert result is True
+            mock_dispose.assert_called_once()
+
+    @patch("core.db.dispose_engine")
+    @patch("core.db.get_engine")
+    def test_connection_error_retry_also_fails(self, mock_engine, mock_dispose):
+        """Both attempts fail -> return False"""
+        engine = MagicMock()
+        mock_engine.return_value = engine
+        df = pd.DataFrame({"a": [1]})
+        from sqlalchemy.exc import OperationalError
+        ssl_err = OperationalError(
+            "statement", {}, Exception("SSL connection has been closed unexpectedly")
+        )
+        with patch.object(df, "to_sql", side_effect=[ssl_err, Exception("still broken")]):
+            result = save_to_db(df, "daily_price")
+            assert result is False
+            mock_dispose.assert_called_once()
+
 
 # ============================================================================
 # check_exists
