@@ -83,7 +83,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Module | Description |
 |---|---|
 | `core/logger.py` | 統一日誌模組（`setup_logger()`、RotatingFileHandler） |
-| `core/db.py` | DB 連線 engine 單例、`save_to_db()`、`check_exists()` 斷點續傳 |
+| `core/db.py` | DB 連線 engine 單例、`save_to_db()`（含連線錯誤重試）、`check_exists()` 斷點續傳、自動切換 Supabase session mode |
 | `core/local_index.py` | 本地 SQLite 索引（`scan_index.db`），per-dataset 斷點續傳 + 失敗記錄 |
 | `core/finmind_client.py` | FinMind DataLoader 單例 + Token 管理 |
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
@@ -203,7 +203,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_fundamental_scanner.py` | FundamentalScanner 單元測試 |
 | `test_chip_scanner.py` | ChipScanner 單元測試 |
 | `test_valuation_scanner.py` | ValuationScanner 單元測試 |
-| `test_daily_updater.py` | DailyUpdater 測試（20 項） |
+| `test_daily_updater.py` | DailyUpdater 測試（21 項） |
 | `test_all_strategies.py` | 12 個策略獨立單元測試（54 項） |
 | `test_strategies.py` | 4 個策略深度測試 + 整合驗證（30 項） |
 | `test_backtester.py` | 回測引擎測試 |
@@ -221,7 +221,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_charts.py` | Plotly 圖表工廠測試 |
 | `test_core_constants.py` | core/constants.py 常數驗證 |
 | `test_core_logger.py` | core/logger.py 日誌模組測試 |
-| `test_core_db.py` | core/db.py 白名單驗證 + save/check 測試 |
+| `test_core_db.py` | core/db.py 白名單驗證 + save/check + 連線重試測試 |
 | `test_core_stock_list.py` | core/stock_list.py 股票清單測試 |
 | `test_core_finmind_client.py` | core/finmind_client.py 單例 + Token 測試 |
 | `test_core_rate_limiter.py` | core/rate_limiter.py 限速器 + 預算測試 |
@@ -245,6 +245,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
+- Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 
 ## Logging
 
