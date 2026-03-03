@@ -27,5 +27,8 @@ reports/
 # 資料快取（本地 Parquet）
 data_cache/
 
+# 資料庫備份
+db_backup_*/
+
 # Claude Code
 .claude/
