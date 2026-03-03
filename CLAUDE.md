@@ -160,6 +160,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
 | `strategy_report.py` | 通用策略掃描回測報告（18 策略 + 0050 基準比較） |
 | `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾） |
+| `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 
 ### Scanner 模組 `scanners/`
 
@@ -176,24 +177,24 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ### Database Tables (Supabase)
 
-| Table | Content |
-|---|---|
-| `daily_price` | 日K線 OHLCV |
-| `weekly_price` | 週K線 OHLCV |
-| `monthly_price` | 月K線 OHLCV |
-| `financial_reports` | 財務報表（EPS、營收等） |
-| `dividend_history` | 股利紀錄 |
-| `twstock_code` | 股票代碼元資料（代號、名稱、市場、CFI） |
-| `chip_institutional` | 三大法人買賣超 |
-| `chip_margin` | 融資融券 |
-| `chip_shareholding` | 股權分散表 |
-| `chip_holding_pct` | 持股比例 |
-| `chip_securities_lending` | 借券資料 |
-| `chip_short_sale` | 借券賣出餘額 |
-| `month_revenue` | 月營收 |
-| `stock_per` | 本益比/股價淨值比/殖利率 |
-| `market_value` | 市值 |
-| `industry_mapping` | 股票產業分類 |
+| Table | Content | Unique Key |
+|---|---|---|
+| `daily_price` | 日K線 OHLCV | `(stock_id, date)` |
+| `weekly_price` | 週K線 OHLCV | `(stock_id, date)` |
+| `monthly_price` | 月K線 OHLCV | `(stock_id, date)` |
+| `financial_reports` | 財務報表（EPS、營收等） | `(stock_id, date, type)` |
+| `dividend_history` | 股利紀錄 | `(stock_id, date, dividend)` |
+| `twstock_code` | 股票代碼元資料（代號、名稱、市場、CFI） | `(商品代號)` |
+| `chip_institutional` | 三大法人買賣超 | `(stock_id, date)` |
+| `chip_margin` | 融資融券 | `(stock_id, date)` |
+| `chip_shareholding` | 股權分散表 | `(stock_id, date)` |
+| `chip_holding_pct` | 持股比例 | `(stock_id, date, HoldingSharesLevel)` |
+| `chip_securities_lending` | 借券資料 | `(stock_id, date, transaction_type)` |
+| `chip_short_sale` | 借券賣出餘額 | `(stock_id, date)` |
+| `month_revenue` | 月營收 | `(stock_id, date, country)` |
+| `stock_per` | 本益比/股價淨值比/殖利率 | `(stock_id, date)` |
+| `market_value` | 市值 | `(stock_id, date)` |
+| `industry_mapping` | 股票產業分類 | — |
 
 ### Tests `tests/`
 
@@ -246,6 +247,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
+- 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
 
 ## Logging
 
