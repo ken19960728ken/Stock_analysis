@@ -266,5 +266,6 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 ## Workflow Conventions
 
 - 執行重大操作（如切換功能、部署）前，先 git commit 並 push 當前改動。
+- 修改 `main.py` 或 `core/` 模組後，需手動重啟 `--daily-schedule` 常駐進程（`kill` 舊進程 + `nohup uv run python main.py --daily-schedule` 重啟），否則不會載入新程式碼。
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
