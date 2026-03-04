@@ -63,6 +63,7 @@ LOOKBACK_TRADE_DAYS = 60  # 載入最近 N 交易日資料
 # 合法表名白名單
 VALID_TABLES = frozenset({
     "daily_price", "chip_institutional", "stock_per", "month_revenue",
+    "twstock_code",
 })
 
 
@@ -93,8 +94,12 @@ def load_daily_price(engine, stock_id: str, start_date: str) -> pd.DataFrame:
 
 
 def load_all_stock_ids(engine) -> list[str]:
-    """從 daily_price 取得所有有資料的股票代碼"""
-    query = text("SELECT DISTINCT stock_id FROM daily_price ORDER BY stock_id")
+    """從 twstock_code 取得一般股票代碼（排除權證、ETN 等）"""
+    query = text(
+        'SELECT DISTINCT "商品代號" FROM twstock_code '
+        "WHERE \"商品類型\" IN ('股票', 'ETF') "
+        'ORDER BY "商品代號"'
+    )
     try:
         with engine.connect() as conn:
             result = conn.execute(query)
@@ -105,7 +110,7 @@ def load_all_stock_ids(engine) -> list[str]:
 
 
 def load_stock_name(engine, stock_id: str) -> str:
-    query = text("SELECT 股票名稱 FROM twstock_code WHERE 證券代號 = :sid LIMIT 1")
+    query = text('SELECT "商品名稱" FROM twstock_code WHERE "商品代號" = :sid LIMIT 1')
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"sid": stock_id})
