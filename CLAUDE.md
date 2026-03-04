@@ -159,7 +159,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
 | `strategy_report.py` | 通用策略掃描回測報告（18 策略 + 0050 基準比較） |
-| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾） |
+| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，股票清單來源 `twstock_code`） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 
 ### Scanner 模組 `scanners/`
@@ -244,6 +244,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - All scanners inherit from `BaseScanner`，提供 tqdm 進度條、Ctrl+C 安全中斷、斷點續傳、結算報告。
 - All strategies inherit from `Strategy` ABC（`analysis/strategies/base.py`），實作 `generate_signals(df, **params) -> pd.DataFrame`。
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
+- 需要遍歷全市場股票時，應從 `twstock_code` 查詢（按 `商品類型` 過濾），不要從 `daily_price` 做 DISTINCT（含 4.7 萬筆權證）。
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
