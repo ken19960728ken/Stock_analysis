@@ -31,7 +31,7 @@ uv run python main.py --scanner all            # 依序執行全部 scanner
 
 # === 每日更新（批量模式，< 1 分鐘） ===
 uv run python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
-uv run python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新
+uv run python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新 + 選股報告
 
 # === 工具指令 ===
 uv run python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
@@ -44,9 +44,11 @@ uv run python main.py --reset-failures         # 清除全部失敗記錄
 uv run python main.py --scanner chip --budget 50  # 限制 FinMind API 預算
 
 # === 每日選股報告 ===
-uv run python main.py --pick-stocks                         # 每日選股報告（Top 20）
+uv run python main.py --pick-stocks                         # 每日選股報告（Top 20，自動取 DB 最新日期）
+uv run python main.py --pick-stocks --pick-date 2026-03-03   # 指定日期的選股報告
 uv run python main.py --pick-stocks --pick-top 10 --pick-days 7  # 自訂參數
 uv run python scripts/daily_stock_picker.py                  # 直接執行
+uv run python scripts/daily_stock_picker.py --date 2026-03-03 --top 10  # 指定日期 + Top N
 uv run python scripts/daily_stock_picker.py --top 10 --days 7 --output reports/
 
 # === 策略回測報告 ===
@@ -159,7 +161,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
 | `strategy_report.py` | 通用策略掃描回測報告（18 策略 + 0050 基準比較） |
-| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，股票清單來源 `twstock_code`） |
+| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 
 ### Scanner 模組 `scanners/`
@@ -249,6 +251,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
+- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 
 ## Logging
 
