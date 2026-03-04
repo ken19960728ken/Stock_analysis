@@ -199,7 +199,7 @@ def run_schedule():
 
 
 def run_daily_schedule():
-    """常駐每日排程：17:00 UTC+8 自動更新"""
+    """常駐每日排程：17:00 UTC+8 自動更新資料 + 產出選股報告"""
     from scanners.daily_updater import DailyUpdater
 
     TZ = timezone(timedelta(hours=8))
@@ -222,7 +222,20 @@ def run_daily_schedule():
             logger.info("每日排程模式已安全退出")
             return
 
+        # Step 1: 更新資料（價格 + 籌碼）
         DailyUpdater().run()
+
+        # Step 2: 產出每日選股報告
+        try:
+            from scripts.daily_stock_picker import run_daily_pick
+            logger.info("開始產出每日選股報告...")
+            report_path = run_daily_pick()
+            if report_path:
+                logger.info(f"選股報告已產出: {report_path}")
+            else:
+                logger.warning("選股報告產出失敗")
+        except Exception as e:
+            logger.error(f"選股報告產出異常: {e}")
 
 
 def main():
@@ -303,6 +316,12 @@ def main():
         default=5,
         help="考慮最近 N 天的訊號（預設 5）",
     )
+    parser.add_argument(
+        "--pick-date",
+        type=str,
+        default=None,
+        help="指定選股報告日期（格式: YYYY-MM-DD，預設自動取 DB 最新日期）",
+    )
     # --- 策略回測報告 ---
     parser.add_argument(
         "--report",
@@ -345,7 +364,7 @@ def main():
     # --pick-stocks：每日選股報告
     if args.pick_stocks:
         from scripts.daily_stock_picker import run_daily_pick
-        run_daily_pick(top_n=args.pick_top, signal_days=args.pick_days)
+        run_daily_pick(top_n=args.pick_top, signal_days=args.pick_days, target_date=args.pick_date)
         return
 
     # --report：策略回測報告

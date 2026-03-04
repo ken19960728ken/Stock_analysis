@@ -4,8 +4,10 @@
 用法:
     uv run python scripts/daily_stock_picker.py
     uv run python scripts/daily_stock_picker.py --top 10 --days 7
+    uv run python scripts/daily_stock_picker.py --date 2026-03-03
     uv run python scripts/daily_stock_picker.py --output reports/
     uv run python main.py --pick-stocks
+    uv run python main.py --pick-stocks --pick-date 2026-03-03
 """
 
 import argparse
@@ -71,16 +73,24 @@ VALID_TABLES = frozenset({
 # 資料載入
 # ===================================================================
 
-def _load_table(engine, table: str, stock_id: str, start_date: str) -> pd.DataFrame:
-    """載入指定表的資料"""
+def _load_table(engine, table: str, stock_id: str, start_date: str,
+                end_date: str | None = None) -> pd.DataFrame:
+    """載入指定表的資料（可選上限日期）"""
     if table not in VALID_TABLES:
         return pd.DataFrame()
-    query = text(
-        f"SELECT * FROM {table} WHERE stock_id = :sid AND date >= :sd ORDER BY date"
-    )
+    if end_date:
+        query = text(
+            f"SELECT * FROM {table} WHERE stock_id = :sid AND date >= :sd AND date <= :ed ORDER BY date"
+        )
+        params = {"sid": stock_id, "sd": start_date, "ed": end_date}
+    else:
+        query = text(
+            f"SELECT * FROM {table} WHERE stock_id = :sid AND date >= :sd ORDER BY date"
+        )
+        params = {"sid": stock_id, "sd": start_date}
     try:
         with engine.connect() as conn:
-            df = pd.read_sql(query, conn, params={"sid": stock_id, "sd": start_date})
+            df = pd.read_sql(query, conn, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -89,8 +99,9 @@ def _load_table(engine, table: str, stock_id: str, start_date: str) -> pd.DataFr
         return pd.DataFrame()
 
 
-def load_daily_price(engine, stock_id: str, start_date: str) -> pd.DataFrame:
-    return _load_table(engine, "daily_price", stock_id, start_date)
+def load_daily_price(engine, stock_id: str, start_date: str,
+                     end_date: str | None = None) -> pd.DataFrame:
+    return _load_table(engine, "daily_price", stock_id, start_date, end_date)
 
 
 def load_all_stock_ids(engine) -> list[str]:
@@ -121,7 +132,8 @@ def load_stock_name(engine, stock_id: str) -> str:
 
 
 def enrich_data(engine, df: pd.DataFrame, stock_id: str,
-                strategy_name: str, start_date: str) -> pd.DataFrame:
+                strategy_name: str, start_date: str,
+                end_date: str | None = None) -> pd.DataFrame:
     """根據策略需求載入補充資料並合併"""
     needs = STRATEGY_DATA_NEEDS.get(strategy_name, [])
     if not needs:
@@ -130,7 +142,7 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
     df = df.sort_values("date").copy()
 
     for table in needs:
-        extra = _load_table(engine, table, stock_id, start_date)
+        extra = _load_table(engine, table, stock_id, start_date, end_date)
         if extra.empty:
             continue
 
@@ -161,9 +173,10 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
 # ===================================================================
 
 def score_stock(engine, stock_id: str, strategies: dict,
-                start_date: str, signal_days: int) -> dict | None:
+                start_date: str, signal_days: int,
+                end_date: str | None = None) -> dict | None:
     """對單支股票用多策略評分，回傳評分結果或 None"""
-    df = load_daily_price(engine, stock_id, start_date)
+    df = load_daily_price(engine, stock_id, start_date, end_date)
     if df.empty or len(df) < 20:
         return None
 
@@ -178,7 +191,7 @@ def score_stock(engine, stock_id: str, strategies: dict,
     votes = {}
     for strategy_name, strategy in strategies.items():
         try:
-            enriched = enrich_data(engine, df.copy(), stock_id, strategy_name, start_date)
+            enriched = enrich_data(engine, df.copy(), stock_id, strategy_name, start_date, end_date)
             result = strategy.generate_signals(enriched)
 
             # 近 N 天的訊號趨勢
@@ -318,7 +331,7 @@ def generate_report(ranked: list[dict], engine, strategies_used: list[str],
 # ===================================================================
 
 def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL_DAYS,
-                   output_dir: str | None = None) -> str | None:
+                   output_dir: str | None = None, target_date: str | None = None) -> str | None:
     """
     執行每日選股流程，回傳報告檔案路徑。
 
@@ -330,14 +343,39 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
         考慮最近 N 天的訊號
     output_dir : str | None
         報告輸出目錄，None 則用預設 reports/
+    target_date : str | None
+        指定報告日期（格式 YYYY-MM-DD），None 則自動取 DB 中最新資料日期
 
     Returns
     -------
     str | None
         報告檔案路徑，失敗則 None
     """
-    report_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=LOOKBACK_TRADE_DAYS * 2)).strftime("%Y-%m-%d")
+    # 連線 DB
+    try:
+        engine = get_engine()
+    except Exception as e:
+        logger.error(f"DB 連線失敗: {e}")
+        print(f"錯誤: DB 連線失敗 — {e}")
+        return None
+
+    # 決定報告日期
+    if target_date:
+        report_date = target_date
+    else:
+        # 自動取 DB 中最新資料日期
+        try:
+            with engine.connect() as conn:
+                max_date = conn.execute(
+                    text("SELECT MAX(date) FROM daily_price")
+                ).fetchone()[0]
+            report_date = max_date.strftime("%Y-%m-%d") if max_date else datetime.now().strftime("%Y-%m-%d")
+        except Exception:
+            report_date = datetime.now().strftime("%Y-%m-%d")
+
+    start_date = (datetime.strptime(report_date, "%Y-%m-%d") - timedelta(days=LOOKBACK_TRADE_DAYS * 2)).strftime("%Y-%m-%d")
+    # 指定日期時限制資料上限，避免看到未來資料
+    end_date = report_date if target_date else None
 
     print(f"\n{'='*60}")
     print(f"每日選股報告 — {report_date}")
@@ -352,14 +390,6 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
             strategies_used.append(name)
 
     print(f"使用策略: {', '.join(strategies_used)}")
-
-    # 連線 DB
-    try:
-        engine = get_engine()
-    except Exception as e:
-        logger.error(f"DB 連線失敗: {e}")
-        print(f"錯誤: DB 連線失敗 — {e}")
-        return None
 
     # 載入股票清單
     stock_ids = load_all_stock_ids(engine)
@@ -377,7 +407,7 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
         if (i + 1) % 100 == 0 or i == 0:
             print(f"  掃描進度: {i+1}/{total} ({(i+1)/total*100:.0f}%)")
 
-        result = score_stock(engine, sid, strategies, start_date, signal_days)
+        result = score_stock(engine, sid, strategies, start_date, signal_days, end_date)
         if result is not None:
             results.append(result)
 
@@ -423,9 +453,10 @@ def main():
     parser.add_argument("--top", type=int, default=DEFAULT_TOP_N, help=f"Top N (預設 {DEFAULT_TOP_N})")
     parser.add_argument("--days", type=int, default=DEFAULT_SIGNAL_DAYS, help=f"考慮最近 N 天訊號 (預設 {DEFAULT_SIGNAL_DAYS})")
     parser.add_argument("--output", type=str, default=None, help="報告輸出目錄")
+    parser.add_argument("--date", type=str, default=None, help="指定報告日期 (格式: YYYY-MM-DD，預設自動取 DB 最新日期)")
     args = parser.parse_args()
 
-    run_daily_pick(top_n=args.top, signal_days=args.days, output_dir=args.output)
+    run_daily_pick(top_n=args.top, signal_days=args.days, output_dir=args.output, target_date=args.date)
 
 
 if __name__ == "__main__":
