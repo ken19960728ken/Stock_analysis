@@ -92,6 +92,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `core/stock_list.py` | 目標股票清單查詢（DB 優先 + fallback） |
 | `core/scanner_base.py` | BaseScanner 抽象類別（主迴圈、tqdm、Ctrl+C、斷點續傳） |
 | `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`） |
+| `core/notifier.py` | Email 通知模組（Gmail SMTP + HTTP CONNECT proxy，`send_report_email()`） |
 
 ### 量化分析平台 `analysis/`
 
@@ -233,11 +234,12 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
 | `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項） |
 | `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
+| `test_notifier.py` | Email 通知模組測試（16 項：寄送流程 + Markdown→HTML + 表格轉換） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
 
-- **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html).
+- **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html). Email 通知需設定 `EMAIL_SENDER`、`EMAIL_APP_PASSWORD`（Gmail 應用程式密碼）、`EMAIL_RECIPIENTS`（逗號分隔多收件人）。若需透過代理連線 SMTP 可設 `EMAIL_PROXY`（如 `http://127.0.0.1:7890`）。
 - **Python 3.11** required (`.python-version` and `pyproject.toml`).
 
 ## Key Patterns
@@ -251,7 +253,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
+- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告 → Step 3 `send_report_email()` Email 推送（環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 
 ## Logging
 
