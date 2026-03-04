@@ -232,6 +232,12 @@ def run_daily_schedule():
             report_path = run_daily_pick()
             if report_path:
                 logger.info(f"選股報告已產出: {report_path}")
+                # Step 3: Email 推送
+                try:
+                    from core.notifier import send_report_email
+                    send_report_email(report_path)
+                except Exception as e:
+                    logger.error(f"Email 推送異常: {e}")
             else:
                 logger.warning("選股報告產出失敗")
         except Exception as e:
