@@ -4,8 +4,10 @@ import os
 import re
 import socket
 import smtplib
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email import encoders
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -68,13 +70,26 @@ def send_report_email(report_path: str, subject: str | None = None) -> bool:
     # Markdown → HTML（簡易轉換）
     html_body = _markdown_to_html(content)
 
-    # 組裝 Email
-    msg = MIMEMultipart("alternative")
+    # 組裝 Email（mixed 容器 → alternative 內文 + 附件）
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(content, "plain", "utf-8"))   # 純文字備援
-    msg.attach(MIMEText(html_body, "html", "utf-8"))   # HTML 主體
+
+    # 內文（alternative: 純文字 + HTML）
+    body_part = MIMEMultipart("alternative")
+    body_part.attach(MIMEText(content, "plain", "utf-8"))
+    body_part.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(body_part)
+
+    # 附件（原始 .md 檔）
+    attachment = MIMEBase("application", "octet-stream")
+    attachment.set_payload(content.encode("utf-8"))
+    encoders.encode_base64(attachment)
+    attachment.add_header(
+        "Content-Disposition", "attachment", filename=report.name
+    )
+    msg.attach(attachment)
 
     # 寄送
     proxy_url = os.getenv("EMAIL_PROXY")
