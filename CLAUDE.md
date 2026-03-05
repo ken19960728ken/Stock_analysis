@@ -85,7 +85,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Module | Description |
 |---|---|
 | `core/logger.py` | 統一日誌模組（`setup_logger()`、RotatingFileHandler） |
-| `core/db.py` | DB 連線 engine 單例、`save_to_db()`（含連線錯誤重試）、`check_exists()` 斷點續傳、自動切換 Supabase session mode |
+| `core/db.py` | DB 連線 engine 單例、`safe_read_sql()`（防殭屍連線）、`save_to_db()`（含連線錯誤重試）、`check_exists()` 斷點續傳、自動切換 Supabase session mode |
 | `core/local_index.py` | 本地 SQLite 索引（`scan_index.db`），per-dataset 斷點續傳 + 失敗記錄 |
 | `core/finmind_client.py` | FinMind DataLoader 單例 + Token 管理 |
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
@@ -253,6 +253,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
+- **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
 - 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告 → Step 3 `send_report_email()` Email 推送（環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 
