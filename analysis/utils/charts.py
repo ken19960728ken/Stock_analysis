@@ -254,9 +254,9 @@ def create_candlestick_chart(
 def create_chip_chart(
     price_df: pd.DataFrame,
     institutional_df: pd.DataFrame,
-    title: str = "籌碼分析",
+    title: str = "三大法人淨買賣超",
 ) -> go.Figure:
-    """三大法人買賣超 + 股價雙Y軸"""
+    """三大法人淨買賣超堆疊柱狀圖 + 股價雙Y軸"""
     if institutional_df.empty:
         fig = go.Figure()
         fig.update_layout(title="無籌碼資料", template="plotly_dark")
@@ -264,22 +264,22 @@ def create_chip_chart(
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # 判斷法人買賣超欄位名稱
-    buy_col = None
-    for col in institutional_df.columns:
-        if "buy" in col.lower() or "買" in col or "Foreign" in col:
-            buy_col = col
-            break
+    # 三大法人淨買賣超
+    investors = [
+        ("foreign_investors_buy", "foreign_investors_sell", "外資淨買超", "#42A5F5"),
+        ("investment_trust_buy", "investment_trust_sell", "投信淨買超", "#FFA726"),
+        ("dealer_buy", "dealer_sell", "自營商淨買超", "#66BB6A"),
+    ]
+    for buy_col, sell_col, name, color in investors:
+        if buy_col in institutional_df.columns and sell_col in institutional_df.columns:
+            net = institutional_df[buy_col] - institutional_df[sell_col]
+            fig.add_trace(
+                go.Bar(x=institutional_df["date"], y=net,
+                       name=name, marker_color=color),
+                secondary_y=False,
+            )
 
-    if buy_col:
-        colors = ["#EF5350" if v >= 0 else "#26A69A" for v in institutional_df[buy_col]]
-        fig.add_trace(
-            go.Bar(x=institutional_df["date"], y=institutional_df[buy_col],
-                   name="法人買賣超", marker_color=colors),
-            secondary_y=False,
-        )
-
-    if not price_df.empty:
+    if not price_df.empty and "close" in price_df.columns:
         fig.add_trace(
             go.Scatter(x=price_df["date"], y=price_df["close"],
                        name="收盤價", line=dict(color="#FFD54F", width=2)),
@@ -288,34 +288,85 @@ def create_chip_chart(
 
     fig.update_layout(
         title=title, template="plotly_dark",
-        height=400,
+        height=400, barmode="relative",
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
     )
-    fig.update_yaxes(title_text="買賣超(張)", secondary_y=False)
+    fig.update_yaxes(title_text="淨買賣超(張)", secondary_y=False)
     fig.update_yaxes(title_text="股價", secondary_y=True)
     return fig
 
 
-def create_margin_chart(margin_df: pd.DataFrame, title: str = "融資融券") -> go.Figure:
-    """融資融券餘額圖"""
+def create_margin_chart(margin_df: pd.DataFrame, title: str = "融資融券餘額") -> go.Figure:
+    """融資餘額 + 融券餘額雙Y軸"""
     if margin_df.empty:
         fig = go.Figure()
         fig.update_layout(title="無融資融券資料", template="plotly_dark")
         return fig
 
-    fig = go.Figure()
-    for col in margin_df.columns:
-        if col in ("date", "stock_id"):
-            continue
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    margin_col = "MarginPurchaseTodayBalance"
+    short_col = "ShortSaleTodayBalance"
+
+    if margin_col in margin_df.columns:
         fig.add_trace(
-            go.Scatter(x=margin_df["date"], y=margin_df[col],
-                       mode="lines", name=col)
+            go.Scatter(x=margin_df["date"], y=margin_df[margin_col],
+                       mode="lines", name="融資餘額(張)",
+                       line=dict(color="#EF5350", width=2)),
+            secondary_y=False,
+        )
+    if short_col in margin_df.columns:
+        fig.add_trace(
+            go.Scatter(x=margin_df["date"], y=margin_df[short_col],
+                       mode="lines", name="融券餘額(張)",
+                       line=dict(color="#42A5F5", width=2)),
+            secondary_y=True,
         )
 
     fig.update_layout(
         title=title, template="plotly_dark", height=350,
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
     )
+    fig.update_yaxes(title_text="融資餘額(張)", secondary_y=False)
+    fig.update_yaxes(title_text="融券餘額(張)", secondary_y=True)
+    return fig
+
+
+def create_short_sale_chart(
+    short_df: pd.DataFrame, title: str = "借券賣出餘額"
+) -> go.Figure:
+    """融券餘額 + 借券賣出餘額雙Y軸"""
+    if short_df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="無借券資料", template="plotly_dark")
+        return fig
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    margin_short_col = "MarginShortSalesCurrentDayBalance"
+    sbl_short_col = "SBLShortSalesCurrentDayBalance"
+
+    if margin_short_col in short_df.columns:
+        fig.add_trace(
+            go.Scatter(x=short_df["date"], y=short_df[margin_short_col],
+                       mode="lines", name="融券餘額",
+                       line=dict(color="#EF5350", width=2)),
+            secondary_y=False,
+        )
+    if sbl_short_col in short_df.columns:
+        fig.add_trace(
+            go.Scatter(x=short_df["date"], y=short_df[sbl_short_col],
+                       mode="lines", name="借券賣出餘額",
+                       line=dict(color="#AB47BC", width=2)),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title=title, template="plotly_dark", height=350,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+    fig.update_yaxes(title_text="融券餘額", secondary_y=False)
+    fig.update_yaxes(title_text="借券賣出餘額", secondary_y=True)
     return fig
 
 

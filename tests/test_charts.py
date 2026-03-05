@@ -17,6 +17,7 @@ from analysis.utils.charts import (
     create_fundamental_chart,
     create_margin_chart,
     create_monthly_heatmap,
+    create_short_sale_chart,
     create_treemap,
     create_yield_spread_chart,
 )
@@ -55,7 +56,12 @@ def institutional_df():
     return pd.DataFrame({
         "date": dates,
         "stock_id": ["2330"] * 30,
-        "foreign_investors_buy": np.random.randint(-5000, 5000, 30),
+        "foreign_investors_buy": np.random.randint(0, 10000, 30),
+        "foreign_investors_sell": np.random.randint(0, 10000, 30),
+        "investment_trust_buy": np.random.randint(0, 5000, 30),
+        "investment_trust_sell": np.random.randint(0, 5000, 30),
+        "dealer_buy": np.random.randint(0, 3000, 30),
+        "dealer_sell": np.random.randint(0, 3000, 30),
     })
 
 
@@ -65,8 +71,19 @@ def margin_df():
     return pd.DataFrame({
         "date": dates,
         "stock_id": ["2330"] * 30,
-        "margin_purchase_balance": np.random.randint(8000, 12000, 30),
-        "short_sale_balance": np.random.randint(3000, 6000, 30),
+        "MarginPurchaseTodayBalance": np.random.randint(8000, 12000, 30),
+        "ShortSaleTodayBalance": np.random.randint(3000, 6000, 30),
+    })
+
+
+@pytest.fixture
+def short_sale_df():
+    dates = pd.date_range("2023-01-01", periods=30, freq="B")
+    return pd.DataFrame({
+        "date": dates,
+        "stock_id": ["2330"] * 30,
+        "MarginShortSalesCurrentDayBalance": np.random.randint(500, 2000, 30),
+        "SBLShortSalesCurrentDayBalance": np.random.randint(1000, 5000, 30),
     })
 
 
@@ -167,6 +184,9 @@ class TestCreateChipChart:
     def test_basic(self, ohlcv_df, institutional_df):
         fig = create_chip_chart(ohlcv_df, institutional_df)
         assert isinstance(fig, go.Figure)
+        # 應有 3 個 Bar (三大法人) + 1 個 Scatter (股價)
+        bar_traces = [t for t in fig.data if isinstance(t, go.Bar)]
+        assert len(bar_traces) == 3
 
     def test_empty_institutional(self, ohlcv_df):
         fig = create_chip_chart(ohlcv_df, pd.DataFrame())
@@ -185,9 +205,26 @@ class TestCreateMarginChart:
     def test_basic(self, margin_df):
         fig = create_margin_chart(margin_df)
         assert isinstance(fig, go.Figure)
+        # 應有 2 條線：融資餘額 + 融券餘額
+        assert len(fig.data) == 2
 
     def test_empty(self):
         fig = create_margin_chart(pd.DataFrame())
+        assert isinstance(fig, go.Figure)
+
+
+# ============================================================================
+# 借券賣出圖
+# ============================================================================
+
+class TestCreateShortSaleChart:
+    def test_basic(self, short_sale_df):
+        fig = create_short_sale_chart(short_sale_df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 2
+
+    def test_empty(self):
+        fig = create_short_sale_chart(pd.DataFrame())
         assert isinstance(fig, go.Figure)
 
 

@@ -19,6 +19,7 @@ from analysis.utils.charts import (
     create_chip_chart,
     create_fundamental_chart,
     create_margin_chart,
+    create_short_sale_chart,
 )
 from analysis.utils.data_loader import (
     get_stock_options,
@@ -139,13 +140,7 @@ with tab2:
         short_df = load_chip_short_sale(stock_id)
         if not short_df.empty:
             st.subheader("借券賣出餘額")
-            import plotly.graph_objects as go
-            fig_short = go.Figure()
-            for col in short_df.columns:
-                if col not in ("date", "stock_id"):
-                    fig_short.add_trace(go.Scatter(x=short_df["date"], y=short_df[col],
-                                                   mode="lines", name=col))
-            fig_short.update_layout(template="plotly_dark", height=350)
+            fig_short = create_short_sale_chart(short_df)
             st.plotly_chart(fig_short, use_container_width=True)
         else:
             st.info("無借券資料")
