@@ -1,5 +1,6 @@
-"""MACD 訊號策略 — MACD 柱狀連續確認 + 趨勢過濾"""
+"""MACD 訊號策略 — MACD 柱狀連續確認 + 趨勢過濾 + 背離偵測"""
 
+import numpy as np
 import pandas as pd
 
 from analysis.strategies.base import Strategy
@@ -8,8 +9,97 @@ from analysis.utils.indicators import _ema, _sma
 
 class MACDStrategy(Strategy):
     name = "MACD 訊號"
-    description = "MACD 柱狀圖連續正值確認買入，連續負值確認賣出（+ 趨勢過濾）"
-    params = {"fast": 12, "slow": 26, "signal": 9, "confirm_bars": 2, "trend_period": 100}
+    description = "MACD 柱狀圖連續確認 + 趨勢過濾 + Price/MACD 背離偵測"
+    params = {
+        "fast": 12, "slow": 26, "signal": 9,
+        "confirm_bars": 2, "trend_period": 100,
+        "use_divergence": True,
+        "divergence_lookback": 30,
+        "divergence_order": 5,
+    }
+
+    def _detect_divergence(self, df: pd.DataFrame, lookback: int, order: int):
+        """偵測 Price vs MACD_hist 背離
+
+        Returns (bullish_div, bearish_div) — 兩個 bool Series
+        """
+        n = len(df)
+        bullish = pd.Series(False, index=df.index)
+        bearish = pd.Series(False, index=df.index)
+
+        if n < lookback or order < 1:
+            return bullish, bearish
+
+        close = df["close"].values
+        hist = df["MACD_hist"].values
+
+        # 用 numpy 找 local extrema（不依賴 scipy）
+        def find_local_min(arr, order):
+            """回傳 local minimum 的索引列表"""
+            indices = []
+            for i in range(order, len(arr) - order):
+                if np.isnan(arr[i]):
+                    continue
+                is_min = True
+                for j in range(1, order + 1):
+                    if np.isnan(arr[i - j]) or np.isnan(arr[i + j]):
+                        is_min = False
+                        break
+                    if arr[i] > arr[i - j] or arr[i] > arr[i + j]:
+                        is_min = False
+                        break
+                if is_min:
+                    indices.append(i)
+            return indices
+
+        def find_local_max(arr, order):
+            """回傳 local maximum 的索引列表"""
+            indices = []
+            for i in range(order, len(arr) - order):
+                if np.isnan(arr[i]):
+                    continue
+                is_max = True
+                for j in range(1, order + 1):
+                    if np.isnan(arr[i - j]) or np.isnan(arr[i + j]):
+                        is_max = False
+                        break
+                    if arr[i] < arr[i - j] or arr[i] < arr[i + j]:
+                        is_max = False
+                        break
+                if is_max:
+                    indices.append(i)
+            return indices
+
+        # 在回溯視窗內尋找背離
+        for i in range(lookback, n):
+            window_start = i - lookback
+
+            # 看漲背離：價格創新低但 MACD_hist 未創新低
+            price_mins = find_local_min(close[window_start:i + 1], order)
+            hist_mins = find_local_min(hist[window_start:i + 1], order)
+
+            if len(price_mins) >= 2 and len(hist_mins) >= 2:
+                # 最近兩個低點
+                p1, p2 = price_mins[-2], price_mins[-1]
+                h1, h2 = hist_mins[-2], hist_mins[-1]
+                # 價格創新低但 MACD_hist 高於前低 = 看漲背離
+                if close[window_start + p2] < close[window_start + p1] and \
+                   hist[window_start + h2] > hist[window_start + h1]:
+                    bullish.iloc[i] = True
+
+            # 看跌背離：價格創新高但 MACD_hist 未創新高
+            price_maxs = find_local_max(close[window_start:i + 1], order)
+            hist_maxs = find_local_max(hist[window_start:i + 1], order)
+
+            if len(price_maxs) >= 2 and len(hist_maxs) >= 2:
+                p1, p2 = price_maxs[-2], price_maxs[-1]
+                h1, h2 = hist_maxs[-2], hist_maxs[-1]
+                # 價格創新高但 MACD_hist 低於前高 = 看跌背離
+                if close[window_start + p2] > close[window_start + p1] and \
+                   hist[window_start + h2] < hist[window_start + h1]:
+                    bearish.iloc[i] = True
+
+        return bullish, bearish
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
@@ -31,7 +121,19 @@ class MACDStrategy(Strategy):
         buy_sig = (consecutive_pos == 1) & (consecutive_pos.shift(1) < 1)
         sell_sig = (consecutive_neg == 1) & (consecutive_neg.shift(1) < 1)
 
-        # 趨勢過濾
+        # 背離偵測
+        if self.params.get("use_divergence", True):
+            lookback = self.params.get("divergence_lookback", 30)
+            order = self.params.get("divergence_order", 5)
+            bullish_div, bearish_div = self._detect_divergence(df, lookback, order)
+            # 看漲背離 + MACD_hist 翻正 → 額外買入
+            div_buy = bullish_div & (df["MACD_hist"] > 0)
+            # 看跌背離 + MACD_hist 翻負 → 額外賣出
+            div_sell = bearish_div & (df["MACD_hist"] < 0)
+            buy_sig = buy_sig | div_buy
+            sell_sig = sell_sig | div_sell
+
+        # 趨勢過濾（買入需在上升趨勢）
         ma_trend = _sma(df["close"], trend_p)
         in_uptrend = df["close"] > ma_trend
         buy_sig = buy_sig & in_uptrend

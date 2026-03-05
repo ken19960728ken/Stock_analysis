@@ -66,9 +66,12 @@ def _enrich_data(df: pd.DataFrame, stock_id: str, strategy_name: str) -> pd.Data
                     extra["institutional_net_buy"] = (
                         extra[buy_cols].sum(axis=1) - extra[sell_cols].sum(axis=1)
                     )
-                # 只保留 date + net_buy，避免策略誤匹配原始 buy 欄位
-                keep = ["date", "institutional_net_buy"]
-                extra = extra[[c for c in keep if c in extra.columns]]
+                # 保留 date + net_buy + 拆分欄位（法人跟單策略需要）
+                keep_set = {"date", "institutional_net_buy"}
+                for c in extra.columns:
+                    if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
+                        keep_set.add(c)
+                extra = extra[[c for c in extra.columns if c in keep_set]]
                 df = df.merge(extra, on="date", how="left")
 
         elif table == "chip_margin":
@@ -147,10 +150,14 @@ st.sidebar.subheader("策略參數")
 params = strategy.get_params()
 updated_params = {}
 for k, v in params.items():
-    if isinstance(v, int):
+    if isinstance(v, bool):
+        updated_params[k] = st.sidebar.checkbox(k, value=v)
+    elif isinstance(v, int):
         updated_params[k] = st.sidebar.number_input(k, value=v, step=1)
     elif isinstance(v, float):
         updated_params[k] = st.sidebar.number_input(k, value=v, step=0.01, format="%.2f")
+    elif isinstance(v, str):
+        updated_params[k] = st.sidebar.text_input(k, value=v)
     else:
         updated_params[k] = st.sidebar.text_input(k, value=str(v))
 strategy.set_params(**updated_params)

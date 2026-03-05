@@ -208,8 +208,11 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                     extra["institutional_net_buy"] = (
                         extra[buy_cols].sum(axis=1) - extra[sell_cols].sum(axis=1)
                     )
-                keep = ["date", "institutional_net_buy"]
-                extra = extra[[c for c in keep if c in extra.columns]]
+                keep_set = {"date", "institutional_net_buy"}
+                for c in extra.columns:
+                    if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
+                        keep_set.add(c)
+                extra = extra[[c for c in extra.columns if c in keep_set]]
                 df = df.merge(extra, on="date", how="left")
 
         elif table == "chip_margin":

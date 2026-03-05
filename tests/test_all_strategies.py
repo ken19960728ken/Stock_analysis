@@ -262,7 +262,7 @@ class TestRSIReversalStrategy:
         assert "signal" in result.columns
 
     def test_oversold_buy_signal(self, sample_stock_id):
-        """先漲後跌 → RSI 從高位降至 < 30 → buy"""
+        """先漲後跌 → RSI 從高位降至 < 30 → buy（關閉趨勢過濾以純測 RSI 穿越）"""
         dates = pd.date_range("2023-01-01", periods=50, freq="B")
         # 前 20 天溫和上漲（建立 RSI 基礎值 > 30），後 30 天持續下跌
         close = np.concatenate([
@@ -275,6 +275,7 @@ class TestRSIReversalStrategy:
             "close": close, "volume": [1_000_000] * 50,
         })
         s = RSIReversalStrategy()
+        s.set_params(use_trend_filter=False)
         result = s.generate_signals(df)
         assert (result["signal"] == 1).any()
 
