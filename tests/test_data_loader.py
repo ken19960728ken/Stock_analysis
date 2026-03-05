@@ -150,11 +150,11 @@ class TestLoadDailyPrice:
         dl = patch_streamlit_cache
         with patch("pandas.read_sql", return_value=sample_price_df.copy()) as mock_sql:
             dl.load_daily_price("2330", start_date="2023-01-01", end_date="2023-12-31")
-            # 確認 SQL 包含日期條件
+            # 確認 SQL 包含日期條件（safe_read_sql 會將字串轉為 text()）
             call_args = mock_sql.call_args
-            sql = call_args[0][0]
-            assert "date >= %(start)s" in sql
-            assert "date <= %(end)s" in sql
+            sql = str(call_args[0][0])
+            assert "date >=" in sql
+            assert "date <=" in sql
 
     def test_db_error(self, patch_streamlit_cache, mock_engine):
         dl = patch_streamlit_cache

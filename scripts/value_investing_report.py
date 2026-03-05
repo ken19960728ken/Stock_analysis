@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from analysis.strategies.value_investing import ValueInvestingStrategy
 from analysis.utils.backtester import Backtester
 from analysis.utils.charts import create_equity_curve
-from core.db import get_engine
+from core.db import get_engine, safe_read_sql
 from core.logger import setup_logger
 
 logger = setup_logger("value_report")
@@ -46,7 +46,7 @@ def load_daily_price(engine, stock_id: str, start_date: str) -> pd.DataFrame:
         "WHERE stock_id = :sid AND date >= :start "
         "ORDER BY date"
     )
-    df = pd.read_sql(sql, engine, params={"sid": stock_id, "start": start_date})
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": start_date})
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
     return df
@@ -58,7 +58,7 @@ def load_stock_per(engine, stock_id: str, start_date: str) -> pd.DataFrame:
         "WHERE stock_id = :sid AND date >= :start "
         "ORDER BY date"
     )
-    df = pd.read_sql(sql, engine, params={"sid": stock_id, "start": start_date})
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": start_date})
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
     return df
@@ -73,7 +73,7 @@ def load_month_revenue(engine, stock_id: str, start_date: str) -> pd.DataFrame:
         "WHERE stock_id = :sid AND date >= :start "
         "ORDER BY date"
     )
-    df = pd.read_sql(sql, engine, params={"sid": stock_id, "start": extended_start})
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": extended_start})
     if df.empty:
         return pd.DataFrame(columns=["date", "revenue_yoy"])
     df["date"] = pd.to_datetime(df["date"])

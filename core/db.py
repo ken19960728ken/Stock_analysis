@@ -59,8 +59,8 @@ def get_engine():
             db_url,
             pool_pre_ping=True,        # 每次使用前先 ping，偵測斷線自動重連
             pool_recycle=300,           # 5 分鐘回收連線
-            pool_size=2,               # 最多 2 條連線
-            max_overflow=0,            # 不建立額外連線
+            pool_size=5,               # 最多 5 條連線
+            max_overflow=3,            # 最多額外 3 條連線
             connect_args={
                 "connect_timeout": 30,  # 連線超時 30 秒
                 "options": "-c statement_timeout=120000",  # 查詢超時 120 秒
@@ -71,6 +71,15 @@ def get_engine():
             },
         )
     return _engine
+
+
+def safe_read_sql(sql, params=None):
+    """安全的 read_sql 包裝：使用 with connect() 確保連線自動歸還，
+    避免 pd.read_sql(sql, engine) 在 SQLAlchemy 2.x 下產生 idle in transaction 殭屍連線。
+    """
+    with get_engine().connect() as conn:
+        df = pd.read_sql(text(sql) if isinstance(sql, str) else sql, conn, params=params)
+    return df
 
 
 def _pg_insert_ignore(table, conn, keys, data_iter):

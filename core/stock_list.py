@@ -1,6 +1,6 @@
 import pandas as pd
 
-from core.db import get_engine
+from core.db import get_engine, safe_read_sql
 from core.logger import setup_logger
 
 logger = setup_logger("stock_list")
@@ -19,7 +19,7 @@ def get_all_stocks():
     WHERE "CFICode" = 'ESVUFR' OR "商品類型" = 'ETF'
     """
     try:
-        df = pd.read_sql(sql, get_engine())
+        df = safe_read_sql(sql)
     except Exception as e:
         logger.warning(f"讀取 twstock_code 失敗: {e}，使用預設清單")
         return [{"stock_id": s, "yahoo_symbol": f"{s}.TW", "name": s, "type": "股票"}
@@ -52,7 +52,7 @@ def get_stock_ids_from_daily_price():
     """從 daily_price 取已有資料的 4 碼 stock_id"""
     sql = "SELECT DISTINCT stock_id FROM daily_price WHERE length(stock_id) = 4"
     try:
-        df = pd.read_sql(sql, get_engine())
+        df = safe_read_sql(sql)
         ids = df["stock_id"].tolist()
         if ids:
             return ids

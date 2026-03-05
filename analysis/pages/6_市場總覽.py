@@ -27,7 +27,7 @@ from analysis.utils.data_loader import (
     load_market_summary,
 )
 from analysis.utils.charts import create_economic_indicator_chart, create_yield_spread_chart
-from core.db import get_engine
+from core.db import safe_read_sql
 
 st.set_page_config(page_title="市場總覽", page_icon="🌐", layout="wide")
 st.title("🌐 市場總覽")
@@ -106,7 +106,7 @@ if not prices.empty:
         JOIN ranked b ON a.stock_id = b.stock_id AND b.rn = 2
         WHERE a.rn = 1
         """
-        change_df = pd.read_sql(sql, get_engine())
+        change_df = safe_read_sql(sql)
 
         if not change_df.empty:
             fig_dist = go.Figure()

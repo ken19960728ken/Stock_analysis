@@ -7,7 +7,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from core.db import get_engine
+from core.db import get_engine, safe_read_sql
 
 # ---------------------------------------------------------------------------
 # FRED 經濟指標配置
@@ -91,7 +91,7 @@ def get_stock_list() -> pd.DataFrame:
     ORDER BY "商品代號"
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame(columns=["stock_id", "name", "type", "market"])
 
@@ -115,7 +115,7 @@ def load_daily_price(stock_id: str, start_date: str = None, end_date: str = None
         params["end"] = end_date
     sql += " ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -136,7 +136,7 @@ def load_weekly_price(stock_id: str, start_date: str = None, end_date: str = Non
         params["end"] = end_date
     sql += " ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -157,7 +157,7 @@ def load_monthly_price(stock_id: str, start_date: str = None, end_date: str = No
         params["end"] = end_date
     sql += " ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -170,7 +170,7 @@ def load_chip_institutional(stock_id: str) -> pd.DataFrame:
     """三大法人買賣超"""
     sql = "SELECT * FROM chip_institutional WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -183,7 +183,7 @@ def load_chip_margin(stock_id: str) -> pd.DataFrame:
     """融資融券"""
     sql = "SELECT * FROM chip_margin WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -196,7 +196,7 @@ def load_chip_shareholding(stock_id: str) -> pd.DataFrame:
     """股權分散表"""
     sql = "SELECT * FROM chip_shareholding WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -209,7 +209,7 @@ def load_chip_holding_pct(stock_id: str) -> pd.DataFrame:
     """持股比例"""
     sql = "SELECT * FROM chip_holding_pct WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -222,7 +222,7 @@ def load_chip_securities_lending(stock_id: str) -> pd.DataFrame:
     """借券資料"""
     sql = "SELECT * FROM chip_securities_lending WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -235,7 +235,7 @@ def load_chip_short_sale(stock_id: str) -> pd.DataFrame:
     """借券賣出餘額"""
     sql = "SELECT * FROM chip_short_sale WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -248,7 +248,7 @@ def load_financial_reports(stock_id: str) -> pd.DataFrame:
     """財務報表"""
     sql = "SELECT * FROM financial_reports WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -261,7 +261,7 @@ def load_dividend_history(stock_id: str) -> pd.DataFrame:
     """股利歷史"""
     sql = "SELECT * FROM dividend_history WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -274,7 +274,7 @@ def load_month_revenue(stock_id: str) -> pd.DataFrame:
     """月營收"""
     sql = "SELECT * FROM month_revenue WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -287,7 +287,7 @@ def load_stock_per(stock_id: str) -> pd.DataFrame:
     """本益比/股價淨值比/殖利率"""
     sql = "SELECT * FROM stock_per WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -300,7 +300,7 @@ def load_market_value(stock_id: str) -> pd.DataFrame:
     """市值"""
     sql = "SELECT * FROM market_value WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -313,7 +313,7 @@ def load_financial_ratios(stock_id: str) -> pd.DataFrame:
     """從 financial_reports 長格式 pivot 出寬格式，計算三率"""
     sql = "SELECT * FROM financial_reports WHERE stock_id = %(sid)s ORDER BY date"
     try:
-        df = pd.read_sql(sql, get_engine(), params={"sid": stock_id})
+        df = safe_read_sql(sql, params={"sid": stock_id})
         if df.empty or "type" not in df.columns:
             return pd.DataFrame()
 
@@ -347,7 +347,7 @@ def load_latest_margin_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -371,7 +371,7 @@ def load_latest_shareholding_summary_all() -> pd.DataFrame:
     GROUP BY stock_id
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -385,7 +385,7 @@ def compute_revenue_growth_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -403,7 +403,7 @@ def compute_institutional_consecutive_days_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        df = pd.read_sql(sql, get_engine())
+        df = safe_read_sql(sql)
         if df.empty:
             return pd.DataFrame()
 
@@ -444,8 +444,8 @@ def compute_shareholder_change_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        latest = pd.read_sql(sql_latest, get_engine())
-        older = pd.read_sql(sql_4w_ago, get_engine())
+        latest = safe_read_sql(sql_latest)
+        older = safe_read_sql(sql_4w_ago)
         if latest.empty or older.empty:
             return pd.DataFrame()
 
@@ -471,7 +471,7 @@ def load_latest_per_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -485,7 +485,7 @@ def load_latest_revenue_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -499,7 +499,7 @@ def load_latest_price_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -513,7 +513,7 @@ def load_latest_institutional_all() -> pd.DataFrame:
     ORDER BY stock_id, date DESC
     """
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame()
 
@@ -521,7 +521,6 @@ def load_latest_institutional_all() -> pd.DataFrame:
 @st.cache_data(ttl=600)
 def load_market_summary() -> dict:
     """市場總覽統計"""
-    engine = get_engine()
     result = {}
     try:
         # 上漲/下跌家數
@@ -538,7 +537,7 @@ def load_market_summary() -> dict:
             COUNT(*) AS total
         FROM latest
         """
-        df = pd.read_sql(sql, engine)
+        df = safe_read_sql(sql)
         if not df.empty:
             result["up_count"] = int(df.iloc[0]["up_count"])
             result["down_count"] = int(df.iloc[0]["down_count"])
@@ -564,7 +563,7 @@ def load_daily_price_multi(stock_ids: list, start_date: str = None) -> pd.DataFr
         params["start_date"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(text(sql), get_engine(), params=params)
+        df = safe_read_sql(text(sql), params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -586,7 +585,7 @@ def load_stock_per_multi(stock_ids: list, start_date: str = None) -> pd.DataFram
         params["start_date"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(text(sql), get_engine(), params=params)
+        df = safe_read_sql(text(sql), params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -608,7 +607,7 @@ def load_chip_institutional_multi(stock_ids: list, start_date: str = None) -> pd
         params["start_date"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(text(sql), get_engine(), params=params)
+        df = safe_read_sql(text(sql), params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -629,7 +628,7 @@ def load_top_volume_stocks(n: int = 50, lookback_days: int = 30) -> list:
     """
     from sqlalchemy import text
     try:
-        df = pd.read_sql(
+        df = safe_read_sql(
             text(
                 "SELECT stock_id, AVG(volume) as avg_volume "
                 "FROM daily_price "
@@ -638,7 +637,6 @@ def load_top_volume_stocks(n: int = 50, lookback_days: int = 30) -> list:
                 "ORDER BY avg_volume DESC "
                 "LIMIT :n"
             ),
-            get_engine(),
             params={"lookback": lookback_days, "n": n},
         )
         return df["stock_id"].tolist() if not df.empty else []
@@ -651,7 +649,7 @@ def load_industry_mapping() -> pd.DataFrame:
     """stock_id -> industry_category"""
     sql = "SELECT stock_id, industry_category FROM industry_mapping"
     try:
-        return pd.read_sql(sql, get_engine())
+        return safe_read_sql(sql)
     except Exception:
         return pd.DataFrame(columns=["stock_id", "industry_category"])
 
@@ -666,7 +664,7 @@ def load_month_revenue_all(start_date: str = None) -> pd.DataFrame:
         params["start"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -684,7 +682,7 @@ def load_chip_institutional_all(start_date: str = None) -> pd.DataFrame:
         params["start"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -702,7 +700,7 @@ def load_dividend_events_all(start_date: str = None) -> pd.DataFrame:
         params["start"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -724,7 +722,7 @@ def load_earnings_dates_all(start_date: str = None) -> pd.DataFrame:
         params["start"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -742,7 +740,7 @@ def load_daily_price_all(start_date: str = None) -> pd.DataFrame:
         params["start"] = start_date
     sql += " ORDER BY stock_id, date"
     try:
-        df = pd.read_sql(sql, get_engine(), params=params)
+        df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
