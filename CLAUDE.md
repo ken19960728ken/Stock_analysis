@@ -233,6 +233,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
 | `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
 | `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項） |
+| `test_improved_strategies.py` | 策略強化測試（RSI 趨勢過濾、MACD 背離、法人拆分、券資比軋空，20 項） |
 | `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
 | `test_notifier.py` | Email 通知模組測試（16 項：寄送流程 + Markdown→HTML + 表格轉換） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
