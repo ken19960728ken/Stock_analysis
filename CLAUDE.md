@@ -255,7 +255,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告 → Step 3 `send_report_email()` Email 推送（環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
+- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行：Step 1 DailyUpdater 抓資料 → Step 2 `run_daily_pick()` 產出選股報告 → Step 3 `send_report_email()` Email 推送（含 .md 附件，環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
+- **macOS 休眠會暫停 `time.sleep()` 計時器**，導致 `--daily-schedule` 排程延遲或漏觸發。排程未觸發時需手動 kill 舊進程並重啟，再用 `--daily` + `--pick-stocks` 補跑。
+- `--pick-stocks` 單獨執行只產報告不寄信；寄信邏輯僅在 `--daily-schedule` 的 Step 3。手動補產報告後需另外呼叫 `send_report_email()` 寄送。
 
 ## Logging
 
