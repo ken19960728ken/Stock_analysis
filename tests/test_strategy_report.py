@@ -257,13 +257,13 @@ class TestListStrategies:
     """測試策略列表輸出"""
 
     def test_lists_all_16_strategies(self, capsys):
-        """應列出所有 18 個策略"""
+        """應列出所有 21 個策略"""
         list_strategies()
         output = capsys.readouterr().out
         from analysis.strategies import STRATEGY_MAP
         for name in STRATEGY_MAP.keys():
             assert name in output
-        assert "18" in output
+        assert "21" in output
 
 
 # ============================================================================

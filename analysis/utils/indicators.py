@@ -187,6 +187,34 @@ def add_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     return df
 
 
+def add_obv(df: pd.DataFrame, ema_period: int = 14) -> pd.DataFrame:
+    """On-Balance Volume + EMA 平滑"""
+    if df.empty:
+        df["OBV"] = pd.Series(dtype=float)
+        df["OBV_EMA"] = pd.Series(dtype=float)
+        return df
+    direction = (df["close"] > df["close"].shift(1)).astype(int) * 2 - 1
+    direction.iloc[0] = 0
+    df["OBV"] = (df["volume"] * direction).cumsum()
+    df["OBV_EMA"] = _ema(df["OBV"], ema_period)
+    return df
+
+
+def add_keltner(df: pd.DataFrame, period: int = 20, atr_mult: float = 1.5,
+                atr_period: int = 14) -> pd.DataFrame:
+    """Keltner Channel"""
+    df["KC_mid"] = _ema(df["close"], period)
+    # ATR 計算
+    high_low = df["high"] - df["low"]
+    high_pc = (df["high"] - df["close"].shift(1)).abs()
+    low_pc = (df["low"] - df["close"].shift(1)).abs()
+    tr = pd.concat([high_low, high_pc, low_pc], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / atr_period, min_periods=atr_period, adjust=False).mean()
+    df["KC_upper"] = df["KC_mid"] + atr_mult * atr
+    df["KC_lower"] = df["KC_mid"] - atr_mult * atr
+    return df
+
+
 def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """計算所有常用指標"""
     if df.empty:

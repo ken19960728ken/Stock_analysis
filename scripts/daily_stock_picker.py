@@ -44,6 +44,9 @@ STRATEGY_WEIGHTS = {
     "法人跟單": 0.6,
     "趨勢過濾MA": 0.5,
     "多策略動態組合": 0.5,
+    "量價動能": 0.7,
+    "營收動能": 0.6,
+    "波動率壓縮突破": 0.5,
 }
 
 # 各策略所需補充資料
@@ -55,6 +58,9 @@ STRATEGY_DATA_NEEDS = {
     "法人跟單": ["chip_institutional"],
     "趨勢過濾MA": [],
     "多策略動態組合": ["chip_institutional", "stock_per", "month_revenue"],
+    "量價動能": [],
+    "營收動能": ["month_revenue"],
+    "波動率壓縮突破": [],
 }
 
 DEFAULT_TOP_N = 20

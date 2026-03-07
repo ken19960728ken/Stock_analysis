@@ -257,8 +257,8 @@ class TestOwnershipConcentrationStrategy:
 class TestExistingStrategiesIntegration:
     """驗證新策略不影響既有策略"""
 
-    def test_strategy_map_has_18_entries(self):
-        assert len(STRATEGY_MAP) == 18
+    def test_strategy_map_has_21_entries(self):
+        assert len(STRATEGY_MAP) == 21
 
     def test_all_strategies_instantiable(self):
         for name, cls in STRATEGY_MAP.items():

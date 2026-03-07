@@ -17,6 +17,9 @@ from analysis.strategies.event_driven import EventDrivenStrategy
 from analysis.strategies.ml_factor import MLFactorStrategy
 from analysis.strategies.trend_filtered_ma import TrendFilteredMAStrategy
 from analysis.strategies.adaptive_ensemble import AdaptiveEnsembleStrategy
+from analysis.strategies.volume_price_momentum import VolumePriceMomentumStrategy
+from analysis.strategies.revenue_momentum import RevenueMomentumStrategy
+from analysis.strategies.volatility_squeeze import VolatilitySqueezeStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -37,4 +40,7 @@ STRATEGY_MAP = {
     "機器學習選股": MLFactorStrategy,
     "趨勢過濾MA": TrendFilteredMAStrategy,
     "多策略動態組合": AdaptiveEnsembleStrategy,
+    "量價動能": VolumePriceMomentumStrategy,
+    "營收動能": RevenueMomentumStrategy,
+    "波動率壓縮突破": VolatilitySqueezeStrategy,
 }

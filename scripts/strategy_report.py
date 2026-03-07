@@ -57,6 +57,9 @@ STRATEGY_DATA_NEEDS = {
     "事件驅動": ["dividend_history"],
     "趨勢過濾MA": [],
     "多策略動態組合": ["chip_institutional", "stock_per", "month_revenue"],
+    "營收動能": ["month_revenue", "stock_per"],
+    "量價動能": [],
+    "波動率壓縮突破": [],
 }
 
 

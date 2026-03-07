@@ -126,7 +126,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta, 風險貢獻 |
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
 
-#### 策略清單（18 個）
+#### 策略清單（21 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -148,6 +148,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 機器學習選股 | `MLFactorStrategy` | ML 多因子 |
 | 趨勢過濾MA | `TrendFilteredMAStrategy` | 技術面（MA 交叉 + MA200 趨勢過濾 + 回檔反彈） |
 | 多策略動態組合 | `AdaptiveEnsembleStrategy` | 技術面+籌碼面+基本面 動態加權 |
+| 量價動能 | `VolumePriceMomentumStrategy` | 技術面（放量突破 + OBV 資金流向） |
+| 營收動能 | `RevenueMomentumStrategy` | 基本面（營收 YoY 加速 + 營收新高） |
+| 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -236,6 +239,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_improved_strategies.py` | 策略強化測試（RSI 趨勢過濾、MACD 背離、法人拆分、券資比軋空，20 項） |
 | `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
 | `test_notifier.py` | Email 通知模組測試（16 項：寄送流程 + Markdown→HTML + 表格轉換） |
+| `test_new_three_strategies.py` | 量價動能 + 營收動能 + 波動率壓縮突破 測試（23 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

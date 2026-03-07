@@ -27,6 +27,7 @@ from analysis.utils.data_loader import (
     load_chip_institutional,
     load_chip_margin,
     load_chip_holding_pct,
+    load_dividend_history,
     load_financial_reports,
     load_market_value,
     load_month_revenue,
@@ -44,6 +45,11 @@ STRATEGY_DATA_NEEDS = {
     "自由現金流": ["financial_reports", "market_value"],
     "價值投資": ["stock_per", "month_revenue"],
     "多因子綜合": ["chip_institutional", "stock_per"],
+    "事件驅動": ["dividend_history"],
+    "多策略動態組合": ["chip_institutional", "stock_per", "month_revenue"],
+    "營收動能": ["month_revenue", "stock_per"],
+    "量價動能": [],
+    "波動率壓縮突破": [],
 }
 
 
@@ -123,6 +129,15 @@ def _enrich_data(df: pd.DataFrame, stock_id: str, strategy_name: str) -> pd.Data
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "dividend_history":
+            extra = load_dividend_history(stock_id)
+            if not extra.empty:
+                extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+                # 事件驅動策略需要 dividend 欄位
+                if "cash_dividend" in extra.columns:
+                    extra = extra.rename(columns={"cash_dividend": "dividend"})
+                df = df.merge(extra[["date", "dividend"]], on="date", how="left")
 
     return df
 
