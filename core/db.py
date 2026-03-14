@@ -17,7 +17,7 @@ VALID_TABLES = frozenset({
     "chip_institutional", "chip_margin", "chip_shareholding",
     "chip_holding_pct", "chip_securities_lending", "chip_short_sale",
     "month_revenue", "stock_per", "market_value",
-    "industry_mapping", "scan_progress",
+    "industry_mapping", "industry_classification", "scan_progress",
 })
 
 
@@ -55,12 +55,14 @@ def get_engine():
         if not db_url:
             raise RuntimeError("找不到 SUPABASE_URL，請檢查 .env 檔案")
         db_url = _ensure_session_mode(db_url)
+        pool_size = int(os.environ.get("DB_POOL_SIZE", "5"))
+        pool_overflow = int(os.environ.get("DB_POOL_OVERFLOW", "3"))
         _engine = create_engine(
             db_url,
             pool_pre_ping=True,        # 每次使用前先 ping，偵測斷線自動重連
             pool_recycle=300,           # 5 分鐘回收連線
-            pool_size=5,               # 最多 5 條連線
-            max_overflow=3,            # 最多額外 3 條連線
+            pool_size=pool_size,
+            max_overflow=pool_overflow,
             connect_args={
                 "connect_timeout": 30,  # 連線超時 30 秒
                 "options": "-c statement_timeout=120000",  # 查詢超時 120 秒
@@ -108,6 +110,7 @@ def _is_connection_error(exc: Exception) -> bool:
 
 def _save_chunk(df_chunk, table_name, chunksize):
     """寫入單個批次，連線錯誤時重試一次。"""
+    import time as _time
     for attempt in range(2):
         try:
             df_chunk.to_sql(
@@ -123,6 +126,7 @@ def _save_chunk(df_chunk, table_name, chunksize):
             if attempt == 0 and _is_connection_error(e):
                 logger.warning(f"寫入 {table_name} 連線中斷，重置連線池後重試...")
                 dispose_engine()
+                _time.sleep(1)
                 continue
             logger.error(f"寫入 {table_name} 失敗: {e}")
             return False

@@ -344,6 +344,7 @@ def load_latest_margin_all() -> pd.DataFrame:
     sql = """
     SELECT DISTINCT ON (stock_id) *
     FROM chip_margin
+    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
     ORDER BY stock_id, date DESC
     """
     try:
@@ -468,6 +469,7 @@ def load_latest_per_all() -> pd.DataFrame:
     sql = """
     SELECT DISTINCT ON (stock_id) stock_id, date, per, pbr, dividend_yield
     FROM stock_per
+    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
     ORDER BY stock_id, date DESC
     """
     try:
@@ -482,6 +484,7 @@ def load_latest_revenue_all() -> pd.DataFrame:
     sql = """
     SELECT DISTINCT ON (stock_id) *
     FROM month_revenue
+    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
     ORDER BY stock_id, date DESC
     """
     try:
@@ -496,6 +499,7 @@ def load_latest_price_all() -> pd.DataFrame:
     sql = """
     SELECT DISTINCT ON (stock_id) stock_id, date, close, volume
     FROM daily_price
+    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
     ORDER BY stock_id, date DESC
     """
     try:
@@ -510,6 +514,7 @@ def load_latest_institutional_all() -> pd.DataFrame:
     sql = """
     SELECT DISTINCT ON (stock_id) *
     FROM chip_institutional
+    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
     ORDER BY stock_id, date DESC
     """
     try:
@@ -646,12 +651,34 @@ def load_top_volume_stocks(n: int = 50, lookback_days: int = 30) -> list:
 
 @st.cache_data(ttl=3600)
 def load_industry_mapping() -> pd.DataFrame:
-    """stock_id -> industry_category"""
-    sql = "SELECT stock_id, industry_category FROM industry_mapping"
+    """stock_id -> industry_category（含 sector, sub_industry）
+
+    優先讀 industry_classification 新表，若空 fallback 到舊 industry_mapping 表。
+    回傳欄位：stock_id, industry_category, sector, sub_industry
+    """
+    # 優先讀新表
+    sql_new = ("SELECT stock_id, sector, sub_industry, "
+               "sector AS industry_category "
+               "FROM industry_classification")
     try:
-        return safe_read_sql(sql)
+        df = safe_read_sql(sql_new)
+        if not df.empty:
+            return df
     except Exception:
-        return pd.DataFrame(columns=["stock_id", "industry_category"])
+        pass
+
+    # Fallback 舊表
+    sql_old = "SELECT stock_id, industry_category FROM industry_mapping"
+    try:
+        df = safe_read_sql(sql_old)
+        if not df.empty:
+            df["sector"] = df["industry_category"]
+            df["sub_industry"] = None
+            return df
+    except Exception:
+        pass
+
+    return pd.DataFrame(columns=["stock_id", "industry_category", "sector", "sub_industry"])
 
 
 @st.cache_data(ttl=600)

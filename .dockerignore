@@ -1,0 +1,12 @@
+.git/
+.claude/
+logs/
+reports/
+scan_index.db
+__pycache__/
+*.pyc
+tests/
+.env.local
+.env
+*.db
+.venv/

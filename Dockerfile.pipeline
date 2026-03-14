@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+# libgomp1 for LightGBM
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install uv + dependencies (pipeline extras only)
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev --extra pipeline
+
+# Copy application code
+COPY core/ core/
+COPY scanners/ scanners/
+COPY scripts/ scripts/
+COPY analysis/strategies/ analysis/strategies/
+COPY analysis/utils/ analysis/utils/
+COPY analysis/__init__.py analysis/
+COPY data/ data/
+COPY main.py .
+
+# Cloud Run Job: run daily pipeline then exit
+CMD ["uv", "run", "python", "main.py", "--daily"]

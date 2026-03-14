@@ -11,7 +11,10 @@ from core.logger import setup_logger
 
 logger = setup_logger("local_index")
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scan_index.db")
+_DB_PATH = os.environ.get(
+    "LOCAL_INDEX_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "scan_index.db"),
+)
 _conn = None
 
 

@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 
 from core.finmind_client import get_fm_token
@@ -17,31 +18,36 @@ class BudgetExhaustedError(Exception):
 
 
 _budget_remaining = None  # None = 不限制
+_budget_lock = threading.Lock()
 
 
 def set_budget(limit):
     """設定本輪 FinMind API 呼叫預算"""
     global _budget_remaining
-    _budget_remaining = limit
+    with _budget_lock:
+        _budget_remaining = limit
     logger.info(f"FinMind API 預算已設定: {limit} 次")
 
 
 def get_budget_remaining():
     """查詢剩餘預算，None 表示不限制"""
-    return _budget_remaining
+    with _budget_lock:
+        return _budget_remaining
 
 
 def reset_budget():
     """重置預算（週期結束時）"""
     global _budget_remaining
-    _budget_remaining = None
+    with _budget_lock:
+        _budget_remaining = None
 
 
 def _consume_budget():
     """內部使用：消耗一次預算"""
     global _budget_remaining
-    if _budget_remaining is not None:
-        _budget_remaining -= 1
+    with _budget_lock:
+        if _budget_remaining is not None:
+            _budget_remaining -= 1
 
 
 # ============================================================================
@@ -86,9 +92,10 @@ class RateLimiter:
 
         FinMind 來源會檢查並消耗預算，Yahoo 不受影響。
         """
-        if self.source == "finmind" and _budget_remaining is not None:
-            if _budget_remaining <= 0:
-                raise BudgetExhaustedError("FinMind API 預算已用盡")
+        if self.source == "finmind":
+            with _budget_lock:
+                if _budget_remaining is not None and _budget_remaining <= 0:
+                    raise BudgetExhaustedError("FinMind API 預算已用盡")
 
         for attempt in range(1, max_retries + 1):
             try:

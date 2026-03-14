@@ -17,7 +17,9 @@ Claude 在此專案中扮演**資深量化交易員**，熟悉全球金融市場
 
 ```bash
 # Install dependencies (uses uv package manager)
-uv sync
+uv sync --extra all            # 本地開發（安裝全部套件）
+# uv sync --extra pipeline     # 只安裝 pipeline 相關（Docker pipeline 用）
+# uv sync --extra analysis     # 只安裝 analysis 相關（Docker analysis 用）
 
 # === 統一入口（推薦，一律用 uv run python） ===
 uv run python main.py --scanner price          # 日K價格資料（Yahoo Finance）
@@ -69,7 +71,7 @@ uv run python -m scanners.fundamental_scanner            # 財報 + 股利
 uv run python -m scanners.chip_scanner                   # 籌碼面
 uv run python -m scanners.chip_scanner --test 2330       # 測試單支
 uv run python -m scanners.valuation_scanner              # 估值面
-uv run python -m scanners.industry_scanner               # 產業分類
+uv run python -m scanners.industry_scanner               # 產業分類（兩層：大類 + 次產業）
 ```
 
 Run tests: `uv run pytest tests/ -v`. No linter is configured.
@@ -91,7 +93,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
 | `core/stock_list.py` | 目標股票清單查詢（DB 優先 + fallback） |
 | `core/scanner_base.py` | BaseScanner 抽象類別（主迴圈、tqdm、Ctrl+C、斷點續傳） |
-| `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`） |
+| `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`、`TWSE_SECTORS`、`INDUSTRY_ALIAS_MAP`、`normalize_sector()`） |
 | `core/notifier.py` | Email 通知模組（Gmail SMTP + HTTP CONNECT proxy，`send_report_email()`） |
 
 ### 量化分析平台 `analysis/`
@@ -99,19 +101,19 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Module | Description |
 |---|---|
 | `analysis/app.py` | Streamlit 主入口 |
-| `analysis/pages/1_個股分析.py` | K 線、技術指標、籌碼、基本面 |
+| `analysis/pages/1_個股分析.py` | K 線、技術指標、籌碼、基本面、同業比較 |
 | `analysis/pages/2_因子篩選.py` | 多維度條件過濾選股 |
 | `analysis/pages/3_策略回測.py` | 16 個內建策略 + 績效報告 |
 | `analysis/pages/4_配對交易.py` | Engle-Granger 共整合 + Z-Score |
 | `analysis/pages/5_風險管理.py` | VaR、回撤、相關性矩陣 |
-| `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、估值分佈 |
+| `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、產業熱力圖、估值分佈 |
 | `analysis/pages/7_策略組合.py` | 多策略組合回測（4 種權重最佳化） |
 | `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行、動態權重 |
-| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 → 產業排名 |
+| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 → 產業排名 + 供應鏈分析 |
 | `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
-| `analysis/strategies/` | 18 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/strategies/` | 22 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
@@ -120,13 +122,15 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/portfolio_optimizer.py` | 4 種組合最佳化（Max Sharpe/Min Vol/Risk Parity/BL） |
 | `analysis/utils/factor_engine.py` | 多因子評分引擎 + 滾動 IC |
 | `analysis/utils/dynamic_weights.py` | 滾動 IC → 動態因子權重 |
-| `analysis/utils/sector_rotation.py` | 產業輪動（營收動能 + 法人流向） |
+| `analysis/utils/sector_rotation.py` | 產業輪動（營收動能 + 法人流向，支援 sector/sub_industry 兩層） |
 | `analysis/utils/event_study.py` | 事件研究引擎（CAR/AAR） |
 | `analysis/utils/ml_stock_picker.py` | LightGBM 選股引擎 |
 | `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta, 風險貢獻 |
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
+| `analysis/utils/peer_comparison.py` | 同業比較分析（同業查詢、指標比較、百分位排名） |
+| `analysis/utils/supply_chain.py` | 產業供應鏈連動分析（營收動能傳導、領先落後） |
 
-#### 策略清單（21 個）
+#### 策略清單（22 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -151,6 +155,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 量價動能 | `VolumePriceMomentumStrategy` | 技術面（放量突破 + OBV 資金流向） |
 | 營收動能 | `RevenueMomentumStrategy` | 基本面（營收 YoY 加速 + 營收新高） |
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
+| 次產業輪動 | `SubIndustryRotationStrategy` | 產業面（次產業營收動能+法人流向排名） |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -159,14 +164,21 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `dashboard/app.py` | FastAPI 後端：4 個端點（`/`、`/api/stats`、`/api/stocks`、`/api/failures`） |
 | `dashboard/static/index.html` | 單頁儀表板（Chart.js 圓餅圖 + 商品矩陣 + 失敗記錄） |
 
+### 靜態資料 `data/`
+
+| File | Description |
+|---|---|
+| `sub_industry_mapping.json` | 次產業對照表（sector → sub_industry → stock_ids） |
+
 ### 腳本 `scripts/`
 
 | Script | Description |
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
-| `strategy_report.py` | 通用策略掃描回測報告（18 策略 + 0050 基準比較） |
+| `strategy_report.py` | 通用策略掃描回測報告（22 策略 + 0050 基準比較） |
 | `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
+| `scrape_sub_industry.py` | 從 HiStock 爬取次產業分類 → `data/sub_industry_mapping.json`（一次性工具，`--diff` 比較差異） |
 
 ### Scanner 模組 `scanners/`
 
@@ -178,7 +190,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `fundamental_scanner.py` | FinMind + Yahoo | `financial_reports`, `dividend_history` |
 | `chip_scanner.py` | FinMind | `chip_institutional`, `chip_margin`, `chip_shareholding`, `chip_holding_pct`, `chip_securities_lending`, `chip_short_sale` |
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
-| `industry_scanner.py` | FinMind | `industry_mapping` |
+| `industry_scanner.py` | FinMind + JSON | `industry_classification`, `industry_mapping` |
 | `daily_updater.py` | FinMind (批量) | `daily_price` + 6 個 chip 表 |
 
 ### Database Tables (Supabase)
@@ -200,7 +212,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `month_revenue` | 月營收 | `(stock_id, date, country)` |
 | `stock_per` | 本益比/股價淨值比/殖利率 | `(stock_id, date)` |
 | `market_value` | 市值 | `(stock_id, date)` |
-| `industry_mapping` | 股票產業分類 | — |
+| `industry_mapping` | 股票產業分類（舊表，向後相容） | — |
+| `industry_classification` | 兩層產業分類（sector + sub_industry） | `(stock_id)` |
 
 ### Tests `tests/`
 
@@ -240,6 +253,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
 | `test_notifier.py` | Email 通知模組測試（16 項：寄送流程 + Markdown→HTML + 表格轉換） |
 | `test_new_three_strategies.py` | 量價動能 + 營收動能 + 波動率壓縮突破 測試（23 項） |
+| `test_industry_classification.py` | 兩層產業分類測試（26 項：標準化、Scanner、集中度、中性化、輪動兩層） |
+| `test_peer_comparison.py` | 同業比較分析測試（get_peers、指標計算、百分位排名） |
+| `test_sub_industry_rotation.py` | 次產業輪動策略測試（訊號生成、最大持有天數、參數邊界） |
+| `test_supply_chain.py` | 供應鏈分析測試（營收動能、領先落後矩陣） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
@@ -277,3 +294,12 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - 修改 `main.py` 或 `core/` 模組後，需手動重啟 `--daily-schedule` 常駐進程（`kill` 舊進程 + `nohup uv run python main.py --daily-schedule` 重啟），否則不會載入新程式碼。
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
+- Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
+- 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 22`），新增策略時需全域搜尋並更新所有相關斷言。
+
+## Cloud Run 部署注意事項
+
+- Apple Silicon Mac 部署到 Cloud Run 必須用 `docker buildx build --platform linux/amd64`，否則容器啟動會報 `exec format error`。
+- gcloud `--set-env-vars` 遇到含 `@` 或特殊字元的值會解析失敗，應改用 `--env-vars-file` 搭配 YAML 檔傳入環境變數。
+- macOS 13 (Ventura) 需安裝 Docker Desktop 4.30（build 149282），4.64+ 不支援 Ventura。
+- gcloud CLI 在 macOS 13 需設定 `CLOUDSDK_PYTHON=/opt/homebrew/opt/python@3.10/libexec/bin/python3`，Homebrew 直接安裝會因 Python 版本衝突失敗。
