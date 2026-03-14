@@ -157,6 +157,20 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
 | 次產業輪動 | `SubIndustryRotationStrategy` | 產業面（次產業營收動能+法人流向排名） |
 
+### 部署 `deploy/`
+
+| File | Description |
+|---|---|
+| `Dockerfile.pipeline` | Cloud Run Job 映像（scanners + scripts + strategies） |
+| `Dockerfile.analysis` | Cloud Run Service 映像（Streamlit 分析平台） |
+| `.dockerignore` | Docker 建置排除清單 |
+| `.streamlit/config.toml` | Streamlit 雲端配置（headless, 0.0.0.0:8501） |
+| `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry） |
+| `deploy/deploy-pipeline.sh` | 建置 + 部署 Pipeline Job（amd64 交叉建置） |
+| `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（amd64 交叉建置） |
+| `deploy/setup-scheduler.sh` | Cloud Scheduler 排程（週一至五 17:00 UTC+8） |
+| `deploy/部署流程.md` | 完整部署文件（含環境版本 + 踩坑紀錄） |
+
 ### Dashboard 模組 `dashboard/`
 
 | Module | Description |
@@ -263,6 +277,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 - **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html). Email 通知需設定 `EMAIL_SENDER`、`EMAIL_APP_PASSWORD`（Gmail 應用程式密碼）、`EMAIL_RECIPIENTS`（逗號分隔多收件人）。若需透過代理連線 SMTP 可設 `EMAIL_PROXY`（如 `http://127.0.0.1:7890`）。
 - **Python 3.11** required (`.python-version` and `pyproject.toml`).
+- **`pyproject.toml` optional-dependencies** — `pipeline`（finmind/yfinance/tqdm/twstock）、`analysis`（streamlit/fredapi）、`dashboard`（fastapi/uvicorn）、`all`（全部）。本地開發用 `uv sync --extra all`，Docker 各自安裝對應 extra。
+- **`DB_POOL_SIZE`** / **`DB_POOL_OVERFLOW`** — 可選環境變數，控制 SQLAlchemy 連線池大小（預設 5/3，Cloud Run 建議 3/2）。
+- **`LOCAL_INDEX_PATH`** — 可選環境變數，覆寫本地 SQLite 索引路徑（預設 `scan_index.db`）。
 
 ## Key Patterns
 
