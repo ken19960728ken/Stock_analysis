@@ -388,7 +388,8 @@ class TestIndustryAndFullMarket:
         with patch("pandas.read_sql", side_effect=Exception("error")):
             result = dl.load_industry_mapping()
             assert result.empty
-            assert list(result.columns) == ["stock_id", "industry_category"]
+            assert "stock_id" in result.columns
+            assert "industry_category" in result.columns
 
     def test_load_month_revenue_all(self, patch_streamlit_cache, mock_engine):
         dl = patch_streamlit_cache

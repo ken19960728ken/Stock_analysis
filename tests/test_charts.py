@@ -15,6 +15,7 @@ from analysis.utils.charts import (
     create_economic_indicator_chart,
     create_equity_curve,
     create_fundamental_chart,
+    create_industry_treemap,
     create_margin_chart,
     create_monthly_heatmap,
     create_short_sale_chart,
@@ -339,6 +340,75 @@ class TestCreateTreemap:
 
     def test_empty(self):
         fig = create_treemap(pd.DataFrame(), "a", "b", "c")
+        assert isinstance(fig, go.Figure)
+
+
+# ============================================================================
+# Industry Treemap（兩層）
+# ============================================================================
+
+class TestCreateIndustryTreemap:
+    def test_basic(self):
+        price_df = pd.DataFrame({
+            "stock_id": ["2330", "2303", "2454", "2317"],
+            "volume": [50000000, 3000000, 8000000, 20000000],
+            "change_pct": [1.5, -0.8, 2.3, -1.2],
+        })
+        industry_map = pd.DataFrame({
+            "stock_id": ["2330", "2303", "2454", "2317"],
+            "sector": ["半導體業", "半導體業", "半導體業", "電子零組件業"],
+            "sub_industry": ["晶圓代工", "晶圓代工", "IC 設計", "連接器"],
+        })
+        fig = create_industry_treemap(price_df, industry_map)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_empty_price(self):
+        industry_map = pd.DataFrame({
+            "stock_id": ["2330"], "sector": ["半導體業"], "sub_industry": ["晶圓代工"],
+        })
+        fig = create_industry_treemap(pd.DataFrame(), industry_map)
+        assert isinstance(fig, go.Figure)
+
+    def test_empty_industry(self):
+        price_df = pd.DataFrame({
+            "stock_id": ["2330"], "volume": [1000], "change_pct": [1.0],
+        })
+        fig = create_industry_treemap(price_df, pd.DataFrame())
+        assert isinstance(fig, go.Figure)
+
+    def test_no_sub_industry(self):
+        """sub_industry 全為 NaN 時 fallback 到 sector"""
+        price_df = pd.DataFrame({
+            "stock_id": ["2330", "2317"],
+            "volume": [50000000, 20000000],
+            "change_pct": [1.5, -1.2],
+        })
+        industry_map = pd.DataFrame({
+            "stock_id": ["2330", "2317"],
+            "sector": ["半導體業", "電子零組件業"],
+            "sub_industry": [None, None],
+        })
+        fig = create_industry_treemap(price_df, industry_map)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_custom_columns(self):
+        price_df = pd.DataFrame({
+            "stock_id": ["2330", "2303"],
+            "market_value": [17e12, 1.5e12],
+            "change_pct": [1.5, -0.8],
+        })
+        industry_map = pd.DataFrame({
+            "stock_id": ["2330", "2303"],
+            "sector": ["半導體業", "半導體業"],
+            "sub_industry": ["晶圓代工", "晶圓代工"],
+        })
+        fig = create_industry_treemap(
+            price_df, industry_map,
+            value_col="market_value", color_col="change_pct",
+            title="自訂標題",
+        )
         assert isinstance(fig, go.Figure)
 
 

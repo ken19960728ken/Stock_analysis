@@ -1,23 +1,41 @@
 """
 產業輪動模組 — 營收動能 + 法人流向 → 產業強弱排序
+支援兩層分析：大類 (sector) / 次產業 (sub_industry)
 """
 
 import numpy as np
 import pandas as pd
 
 
+def _resolve_group_col(industry_map: pd.DataFrame, level: str) -> str:
+    """根據 level 決定要 groupby 的欄位名稱。
+
+    level="sector" → 用 sector 欄位（fallback industry_category）
+    level="sub_industry" → 用 sub_industry 欄位
+    """
+    if level == "sub_industry" and "sub_industry" in industry_map.columns:
+        return "sub_industry"
+    if "sector" in industry_map.columns:
+        return "sector"
+    if "industry_category" in industry_map.columns:
+        return "industry_category"
+    return "industry_category"
+
+
 def calc_industry_momentum(
     revenue_df: pd.DataFrame,
     industry_map: pd.DataFrame,
     lookback_months: int = 3,
+    level: str = "sector",
 ) -> pd.DataFrame:
     """
     計算產業營收動能
 
     Parameters:
         revenue_df: 月營收資料 (stock_id, date, revenue, month_revenue_year_on_year)
-        industry_map: (stock_id, industry_category)
+        industry_map: (stock_id, industry_category/sector/sub_industry)
         lookback_months: 回溯月數
+        level: "sector" 或 "sub_industry"
 
     Returns:
         DataFrame[industry, avg_yoy, median_yoy, positive_ratio, momentum_score, rank]
@@ -25,10 +43,18 @@ def calc_industry_momentum(
     if revenue_df.empty or industry_map.empty:
         return pd.DataFrame()
 
+    group_col = _resolve_group_col(industry_map, level)
+
     # 合併產業分類
     df = revenue_df.merge(industry_map, on="stock_id", how="inner")
     if df.empty:
         return pd.DataFrame()
+
+    # 次產業 level 時過濾掉沒有 sub_industry 的
+    if level == "sub_industry" and group_col == "sub_industry":
+        df = df.dropna(subset=[group_col])
+        if df.empty:
+            return pd.DataFrame()
 
     # 取最近 N 個月
     df["date"] = pd.to_datetime(df["date"])
@@ -43,14 +69,14 @@ def calc_industry_momentum(
     df[yoy_col] = pd.to_numeric(df[yoy_col], errors="coerce")
 
     # 按產業彙總
-    result = df.groupby("industry_category").agg(
+    result = df.groupby(group_col).agg(
         avg_yoy=(yoy_col, "mean"),
         median_yoy=(yoy_col, "median"),
         positive_ratio=(yoy_col, lambda x: (x > 0).mean()),
         stock_count=("stock_id", "nunique"),
     ).reset_index()
 
-    result.rename(columns={"industry_category": "industry"}, inplace=True)
+    result.rename(columns={group_col: "industry"}, inplace=True)
 
     # 動能分數 = 0.5 * avg_yoy_rank + 0.3 * positive_ratio_rank + 0.2 * median_yoy_rank
     for col in ["avg_yoy", "median_yoy", "positive_ratio"]:
@@ -72,14 +98,16 @@ def calc_industry_flow(
     chip_df: pd.DataFrame,
     industry_map: pd.DataFrame,
     lookback_days: int = 20,
+    level: str = "sector",
 ) -> pd.DataFrame:
     """
     計算產業法人資金流向
 
     Parameters:
         chip_df: 三大法人買賣超 (stock_id, date, *_buy, *_sell)
-        industry_map: (stock_id, industry_category)
+        industry_map: (stock_id, industry_category/sector/sub_industry)
         lookback_days: 回溯天數
+        level: "sector" 或 "sub_industry"
 
     Returns:
         DataFrame[industry, total_net_buy, avg_net_buy, flow_score, rank]
@@ -87,9 +115,16 @@ def calc_industry_flow(
     if chip_df.empty or industry_map.empty:
         return pd.DataFrame()
 
+    group_col = _resolve_group_col(industry_map, level)
+
     df = chip_df.merge(industry_map, on="stock_id", how="inner")
     if df.empty:
         return pd.DataFrame()
+
+    if level == "sub_industry" and group_col == "sub_industry":
+        df = df.dropna(subset=[group_col])
+        if df.empty:
+            return pd.DataFrame()
 
     df["date"] = pd.to_datetime(df["date"])
     latest_date = df["date"].max()
@@ -104,13 +139,13 @@ def calc_industry_flow(
     elif "net_buy" not in df.columns:
         return pd.DataFrame()
 
-    result = df.groupby("industry_category").agg(
+    result = df.groupby(group_col).agg(
         total_net_buy=("net_buy", "sum"),
         avg_net_buy=("net_buy", "mean"),
         stock_count=("stock_id", "nunique"),
     ).reset_index()
 
-    result.rename(columns={"industry_category": "industry"}, inplace=True)
+    result.rename(columns={group_col: "industry"}, inplace=True)
 
     result["flow_score"] = result["total_net_buy"].rank(ascending=False, pct=True)
     result["rank"] = result["total_net_buy"].rank(ascending=False).astype(int)
@@ -184,6 +219,7 @@ def industry_rotation_history(
     chip_df: pd.DataFrame,
     industry_map: pd.DataFrame,
     periods: int = 12,
+    level: str = "sector",
 ) -> pd.DataFrame:
     """
     月 × 產業排名矩陣（輪動歷史）
@@ -203,7 +239,8 @@ def industry_rotation_history(
     results = {}
     for month in months:
         month_rev = revenue_df[revenue_df["month"] == month]
-        momentum = calc_industry_momentum(month_rev, industry_map, lookback_months=1)
+        momentum = calc_industry_momentum(month_rev, industry_map,
+                                          lookback_months=1, level=level)
         if not momentum.empty:
             rank_dict = dict(zip(momentum["industry"], momentum["rank"]))
             results[str(month)] = rank_dict

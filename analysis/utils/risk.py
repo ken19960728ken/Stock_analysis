@@ -131,6 +131,70 @@ def calc_calmar_ratio(annual_return: float, max_drawdown: float) -> float:
     return float(annual_return / abs(max_drawdown))
 
 
+def calc_industry_concentration(
+    holdings: pd.DataFrame,
+    current_prices: dict,
+    industry_map: pd.DataFrame,
+    threshold: float = 0.4,
+) -> dict:
+    """
+    計算持倉的產業集中度
+
+    Parameters:
+        holdings: DataFrame [stock_id, shares]
+        current_prices: {stock_id: price}
+        industry_map: DataFrame [stock_id, sector, ...]
+        threshold: 集中度警戒門檻（預設 40%）
+
+    Returns:
+        {"breakdown": DataFrame[sector, market_value, weight],
+         "warnings": list[str], "hhi": float}
+    """
+    if holdings.empty:
+        return {"breakdown": pd.DataFrame(), "warnings": [], "hhi": 0.0}
+
+    # 計算各持倉市值
+    records = []
+    for _, row in holdings.iterrows():
+        sid = row["stock_id"]
+        mv = row["shares"] * current_prices.get(sid, 0)
+        records.append({"stock_id": sid, "market_value": mv})
+    mv_df = pd.DataFrame(records)
+
+    total_mv = mv_df["market_value"].sum()
+    if total_mv <= 0:
+        return {"breakdown": pd.DataFrame(), "warnings": [], "hhi": 0.0}
+
+    # 合併產業
+    sector_col = "sector" if "sector" in industry_map.columns else "industry_category"
+    merge_cols = ["stock_id", sector_col]
+    merged = mv_df.merge(
+        industry_map[merge_cols].drop_duplicates(subset=["stock_id"]),
+        on="stock_id", how="left",
+    )
+    merged[sector_col] = merged[sector_col].fillna("未分類")
+
+    breakdown = merged.groupby(sector_col).agg(
+        market_value=("market_value", "sum"),
+    ).reset_index()
+    breakdown.rename(columns={sector_col: "sector"}, inplace=True)
+    breakdown["weight"] = breakdown["market_value"] / total_mv
+    breakdown = breakdown.sort_values("weight", ascending=False).reset_index(drop=True)
+
+    # HHI (Herfindahl-Hirschman Index)
+    hhi = float((breakdown["weight"] ** 2).sum())
+
+    # 警告
+    warnings = []
+    for _, row in breakdown.iterrows():
+        if row["weight"] > threshold:
+            warnings.append(
+                f"{row['sector']} 佔比 {row['weight']:.0%} 超過 {threshold:.0%} 門檻"
+            )
+
+    return {"breakdown": breakdown, "warnings": warnings, "hhi": hhi}
+
+
 def portfolio_risk_report(
     holdings: pd.DataFrame,
     price_data: dict,

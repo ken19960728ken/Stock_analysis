@@ -19,11 +19,17 @@ from analysis.utils.charts import create_correlation_heatmap
 from analysis.utils.data_loader import (
     load_chip_institutional_multi,
     load_daily_price_multi,
+    load_industry_mapping,
     load_stock_per_multi,
     load_top_volume_stocks,
 )
 from analysis.utils.dynamic_weights import rolling_ic_weights
-from analysis.utils.factor_engine import factor_correlation_matrix, ic_series, rolling_ic_mean
+from analysis.utils.factor_engine import (
+    factor_correlation_matrix,
+    ic_series,
+    rolling_ic_mean,
+    zscore_industry_neutral,
+)
 from analysis.utils.indicators import (
     add_bollinger,
     add_kd,
@@ -160,6 +166,10 @@ if not selected_factors:
 # 前瞻天數
 forward_days = st.sidebar.selectbox("前瞻天數", [5, 10, 20], index=0)
 
+# 產業中性化
+industry_neutral = st.sidebar.checkbox("產業中性化", value=False,
+                                        help="同產業內做截面 Z-Score，消除產業偏差")
+
 # 日期範圍
 today = date.today()
 date_range = st.sidebar.selectbox(
@@ -236,12 +246,27 @@ def run_factor_analysis():
         ]
         base = base.merge(chip_factor_df[chip_cols], on=["date", "stock_id"], how="left")
 
+    factor_cols_in_data = [f for f in selected_factors if f in base.columns]
+
+    # 5.5 產業中性化
+    if industry_neutral:
+        progress.progress(80, text="產業中性化...")
+        ind_map = load_industry_mapping()
+        if not ind_map.empty and "sector" in ind_map.columns:
+            base = base.merge(
+                ind_map[["stock_id", "sector"]].drop_duplicates(subset=["stock_id"]),
+                on="stock_id", how="left",
+            )
+            base["sector"] = base["sector"].fillna("未分類")
+            for f in factor_cols_in_data:
+                if f in base.columns:
+                    base[f] = zscore_industry_neutral(base, f, "sector")
+
     progress.progress(85, text="計算 IC 序列...")
 
     # 6. 計算各因子 IC 序列
     ic_results = {}
     return_df = base[["date", "stock_id", "close"]].copy()
-    factor_cols_in_data = [f for f in selected_factors if f in base.columns]
 
     for factor_name in factor_cols_in_data:
         factor_df = base[["date", "stock_id", factor_name, "close"]].dropna(

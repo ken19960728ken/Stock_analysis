@@ -21,12 +21,17 @@ from analysis.utils.data_loader import (
     get_stock_list,
     is_fred_available,
     load_fred_series,
+    load_industry_mapping,
     load_latest_institutional_all,
     load_latest_per_all,
     load_latest_price_all,
     load_market_summary,
 )
-from analysis.utils.charts import create_economic_indicator_chart, create_yield_spread_chart
+from analysis.utils.charts import (
+    create_economic_indicator_chart,
+    create_industry_treemap,
+    create_yield_spread_chart,
+)
 from core.db import safe_read_sql
 
 st.set_page_config(page_title="市場總覽", page_icon="🌐", layout="wide")
@@ -152,6 +157,73 @@ if not inst_data.empty and buy_col:
         st.dataframe(top_sell, use_container_width=True)
 else:
     st.info("無法人資料")
+
+# --- 產業熱力圖 ---
+st.header("產業熱力圖")
+try:
+    industry_map = load_industry_mapping()
+    if not industry_map.empty and not prices.empty:
+        # 計算漲跌幅
+        change_sql = """
+        WITH ranked AS (
+            SELECT stock_id, close, volume, date,
+                   ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY date DESC) as rn
+            FROM daily_price
+        )
+        SELECT a.stock_id,
+               a.close,
+               a.volume,
+               (a.close - b.close) / NULLIF(b.close, 0) * 100 AS change_pct
+        FROM ranked a
+        JOIN ranked b ON a.stock_id = b.stock_id AND b.rn = 2
+        WHERE a.rn = 1
+        """
+        price_change = safe_read_sql(change_sql)
+
+        if not price_change.empty:
+            # TreeMap（全寬）
+            fig_treemap = create_industry_treemap(
+                price_change, industry_map,
+                value_col="volume", color_col="change_pct",
+                title="次產業漲跌熱力圖（面積=成交量，顏色=漲跌幅）",
+            )
+            st.plotly_chart(fig_treemap, use_container_width=True)
+
+            # 產業漲跌排行（雙欄）
+            merged_ind = price_change.merge(
+                industry_map[["stock_id", "sector", "sub_industry"]],
+                on="stock_id", how="inner",
+            )
+            merged_ind["sub_industry"] = merged_ind["sub_industry"].fillna(merged_ind["sector"])
+            merged_ind["change_pct"] = pd.to_numeric(merged_ind["change_pct"], errors="coerce")
+            merged_ind["volume"] = pd.to_numeric(merged_ind["volume"], errors="coerce")
+
+            sub_agg = merged_ind.groupby("sub_industry").agg(
+                avg_change=("change_pct", "mean"),
+                total_volume=("volume", "sum"),
+                stock_count=("stock_id", "count"),
+            ).reset_index().sort_values("avg_change", ascending=False)
+
+            col_strong, col_weak = st.columns(2)
+            with col_strong:
+                st.subheader("Top 10 強勢次產業")
+                top10 = sub_agg.head(10).copy()
+                top10["avg_change"] = top10["avg_change"].map(lambda x: f"{x:+.2f}%")
+                top10["total_volume"] = top10["total_volume"].map(lambda x: f"{x:,.0f}")
+                top10.columns = ["次產業", "平均漲跌幅", "總成交量", "家數"]
+                st.dataframe(top10.reset_index(drop=True), use_container_width=True, hide_index=True)
+
+            with col_weak:
+                st.subheader("Top 10 弱勢次產業")
+                bot10 = sub_agg.tail(10).sort_values("avg_change").copy()
+                bot10["avg_change"] = bot10["avg_change"].map(lambda x: f"{x:+.2f}%")
+                bot10["total_volume"] = bot10["total_volume"].map(lambda x: f"{x:,.0f}")
+                bot10.columns = ["次產業", "平均漲跌幅", "總成交量", "家數"]
+                st.dataframe(bot10.reset_index(drop=True), use_container_width=True, hide_index=True)
+    else:
+        st.info("無產業分類資料")
+except Exception as e:
+    st.info(f"產業熱力圖載入失敗: {e}")
 
 # --- 估值分佈 ---
 st.header("估值分佈")

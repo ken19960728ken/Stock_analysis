@@ -429,7 +429,7 @@ class TestStrategyIntegration:
 
     def test_total_strategy_count(self):
         from analysis.strategies import STRATEGY_MAP
-        assert len(STRATEGY_MAP) == 21  # 16 original + 2 + 3 new
+        assert len(STRATEGY_MAP) == 22  # 16 original + 2 + 3 new + 1 次產業輪動
 
     def test_instantiate_all_strategies(self):
         """所有策略都能正常實例化"""

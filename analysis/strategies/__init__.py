@@ -20,6 +20,7 @@ from analysis.strategies.adaptive_ensemble import AdaptiveEnsembleStrategy
 from analysis.strategies.volume_price_momentum import VolumePriceMomentumStrategy
 from analysis.strategies.revenue_momentum import RevenueMomentumStrategy
 from analysis.strategies.volatility_squeeze import VolatilitySqueezeStrategy
+from analysis.strategies.sub_industry_rotation import SubIndustryRotationStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -43,4 +44,5 @@ STRATEGY_MAP = {
     "量價動能": VolumePriceMomentumStrategy,
     "營收動能": RevenueMomentumStrategy,
     "波動率壓縮突破": VolatilitySqueezeStrategy,
+    "次產業輪動": SubIndustryRotationStrategy,
 }

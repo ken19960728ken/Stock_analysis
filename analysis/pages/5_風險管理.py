@@ -16,11 +16,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from analysis.utils.charts import create_correlation_heatmap, create_equity_curve
-from analysis.utils.data_loader import get_stock_options, load_daily_price
+from analysis.utils.data_loader import get_stock_options, load_daily_price, load_industry_mapping
 from analysis.utils.risk import (
     calc_beta,
     calc_calmar_ratio,
     calc_cvar,
+    calc_industry_concentration,
     calc_max_drawdown,
     calc_sharpe,
     calc_sortino,
@@ -210,6 +211,40 @@ if returns_dict:
             xaxis_title="日報酬率", yaxis_title="頻率",
         )
         st.plotly_chart(fig_dist, use_container_width=True)
+
+        # --- 產業集中度 ---
+        st.header("產業集中度")
+        ind_map = load_industry_mapping()
+        if not ind_map.empty:
+            conc = calc_industry_concentration(holdings_df, current_prices, ind_map)
+            breakdown = conc["breakdown"]
+            if not breakdown.empty:
+                import plotly.express as px
+                fig_pie = px.pie(
+                    breakdown, values="weight", names="sector",
+                    title="持倉產業分佈",
+                    color_discrete_sequence=px.colors.qualitative.Set3,
+                )
+                fig_pie.update_layout(template="plotly_dark", height=400)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+                # HHI 指標
+                hhi = conc["hhi"]
+                hhi_label = "高度集中" if hhi > 0.25 else ("中度集中" if hhi > 0.15 else "分散")
+                st.metric("HHI 集中度指數", f"{hhi:.4f}", hhi_label)
+
+                # 警告
+                for w in conc["warnings"]:
+                    st.warning(f"⚠️ {w}")
+
+                # 明細表
+                bd = breakdown.copy()
+                bd["market_value"] = bd["market_value"].map(lambda x: f"${x:,.0f}")
+                bd["weight"] = bd["weight"].map(lambda x: f"{x:.1%}")
+                st.dataframe(bd.rename(columns={"sector": "產業", "market_value": "市值", "weight": "佔比"}),
+                             use_container_width=True, hide_index=True)
+        else:
+            st.info("無產業分類資料，請先執行 `python main.py --scanner industry`")
 
     else:
         st.warning("報酬率資料不足，無法計算風險指標")

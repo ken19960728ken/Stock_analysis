@@ -558,6 +558,101 @@ def create_treemap(data: pd.DataFrame, labels_col: str, values_col: str,
     return fig
 
 
+def create_industry_treemap(
+    price_df: pd.DataFrame,
+    industry_map: pd.DataFrame,
+    value_col: str = "volume",
+    color_col: str = "change_pct",
+    title: str = "產業漲跌熱力圖",
+) -> go.Figure:
+    """兩層階層式 Treemap（Root → sector → sub_industry → stock_id）
+
+    Parameters:
+        price_df: 需含 stock_id, 及 value_col / color_col 欄位
+        industry_map: 需含 stock_id, sector, sub_industry
+        value_col: 面積欄位（如 volume 或 market_value）
+        color_col: 顏色欄位（如 change_pct）
+        title: 圖表標題
+    """
+    if price_df.empty or industry_map.empty:
+        fig = go.Figure()
+        fig.update_layout(title="無資料", template="plotly_dark")
+        return fig
+
+    # 合併產業分類
+    df = price_df.merge(industry_map[["stock_id", "sector", "sub_industry"]],
+                        on="stock_id", how="inner")
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="無資料", template="plotly_dark")
+        return fig
+
+    # 確保數值欄位
+    for col in [value_col, color_col]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=[value_col])
+    df[value_col] = df[value_col].clip(lower=0)  # Treemap 不接受負值面積
+
+    # 填補缺失的 sub_industry
+    df["sub_industry"] = df["sub_industry"].fillna(df["sector"])
+
+    # 建構 Treemap 階層
+    labels = []
+    parents = []
+    values = []
+    colors = []
+    customdata = []
+
+    # 第 0 層：各 sector
+    for sector in df["sector"].dropna().unique():
+        s_df = df[df["sector"] == sector]
+        labels.append(sector)
+        parents.append("")
+        values.append(0)  # branch node，Plotly 會自動加總
+        avg_change = s_df[color_col].mean() if color_col in s_df.columns else 0
+        colors.append(avg_change if not pd.isna(avg_change) else 0)
+        customdata.append([avg_change if not pd.isna(avg_change) else 0])
+
+    # 第 1 層：各 sub_industry（只有在 sub != sector 時才建立中間層）
+    for (sector, sub), g in df.groupby(["sector", "sub_industry"]):
+        if sub != sector:
+            labels.append(sub)
+            parents.append(sector)
+            values.append(0)
+            avg_change = g[color_col].mean() if color_col in g.columns else 0
+            colors.append(avg_change if not pd.isna(avg_change) else 0)
+            customdata.append([avg_change if not pd.isna(avg_change) else 0])
+
+    # 第 2 層：個股
+    for _, row in df.iterrows():
+        labels.append(str(row["stock_id"]))
+        parent = row["sub_industry"] if row["sub_industry"] != row["sector"] else row["sector"]
+        parents.append(parent)
+        values.append(max(float(row[value_col]), 0))
+        chg = float(row[color_col]) if color_col in df.columns and not pd.isna(row.get(color_col)) else 0
+        colors.append(chg)
+        customdata.append([chg])
+
+    fig = go.Figure(go.Treemap(
+        labels=labels,
+        parents=parents,
+        values=values,
+        marker=dict(
+            colors=colors,
+            colorscale=[[0, "#EF5350"], [0.5, "#424242"], [1, "#26A69A"]],
+            cmid=0,
+            showscale=True,
+            colorbar=dict(title="漲跌%"),
+        ),
+        texttemplate="<b>%{label}</b><br>%{customdata[0]:.1f}%",
+        customdata=customdata,
+        branchvalues="total",
+    ))
+    fig.update_layout(title=title, template="plotly_dark", height=700)
+    return fig
+
+
 def create_economic_indicator_chart(
     data: pd.DataFrame,
     indicator_config: dict,

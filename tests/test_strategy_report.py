@@ -263,7 +263,7 @@ class TestListStrategies:
         from analysis.strategies import STRATEGY_MAP
         for name in STRATEGY_MAP.keys():
             assert name in output
-        assert "21" in output
+        assert "22" in output
 
 
 # ============================================================================

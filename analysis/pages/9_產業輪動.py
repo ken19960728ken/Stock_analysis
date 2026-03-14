@@ -1,5 +1,6 @@
 """
 Page 9: 產業輪動 — 營收動能 + 法人流向 → 產業強弱排序
+支援大類 (sector) / 次產業 (sub_industry) 兩層分析
 """
 
 import sys
@@ -26,12 +27,23 @@ from analysis.utils.sector_rotation import (
     industry_composite_score,
     industry_rotation_history,
 )
+from analysis.utils.supply_chain import (
+    SUPPLY_CHAIN,
+    calc_chain_lead_lag,
+    calc_chain_momentum,
+    get_chain_names,
+)
 
 st.set_page_config(page_title="產業輪動", page_icon="🔄", layout="wide")
 st.title("🔄 產業輪動分析")
 
 # --- Sidebar ---
 st.sidebar.header("分析設定")
+
+# 分析層級
+has_sub = False
+analysis_level = st.sidebar.radio("分析層級", ["大類 (sector)", "次產業 (sub_industry)"])
+level = "sub_industry" if "次產業" in analysis_level else "sector"
 
 lookback_months = st.sidebar.slider("營收回溯月數", 1, 12, 3)
 lookback_days = st.sidebar.slider("法人流向回溯天數", 5, 60, 20)
@@ -52,6 +64,9 @@ if run_btn:
             st.error("無產業分類資料，請先執行 `python main.py --scanner industry`")
             st.stop()
 
+        # 檢查是否有次產業資料
+        has_sub = "sub_industry" in industry_map.columns and industry_map["sub_industry"].notna().any()
+
         start_date = (date.today() - timedelta(days=lookback_months * 31 + 30)).isoformat()
         revenue_df = load_month_revenue_all(start_date)
         chip_df = load_chip_institutional_all(
@@ -61,12 +76,14 @@ if run_btn:
     st.session_state["sr_industry_map"] = industry_map
     st.session_state["sr_revenue_df"] = revenue_df
     st.session_state["sr_chip_df"] = chip_df
+    st.session_state["sr_has_sub"] = has_sub
     st.session_state["sr_params"] = {
         "lookback_months": lookback_months,
         "lookback_days": lookback_days,
         "m_weight": m_weight,
         "f_weight": f_weight,
         "rotation_periods": rotation_periods,
+        "level": level,
     }
 
 if "sr_industry_map" not in st.session_state:
@@ -76,20 +93,28 @@ if "sr_industry_map" not in st.session_state:
 industry_map = st.session_state["sr_industry_map"]
 revenue_df = st.session_state["sr_revenue_df"]
 chip_df = st.session_state["sr_chip_df"]
+has_sub = st.session_state.get("sr_has_sub", False)
 params = st.session_state["sr_params"]
 
-tab1, tab2, tab3 = st.tabs(["📊 產業排名", "🗺️ 輪動熱力圖", "📋 產業成分股"])
+if level == "sub_industry" and not has_sub:
+    st.warning("目前無次產業分類資料，將自動使用大類分析。")
+    level = "sector"
+
+tab1, tab2, tab3, tab4 = st.tabs(["📊 產業排名", "🗺️ 輪動熱力圖", "📋 產業成分股", "🔗 供應鏈分析"])
 
 # ===== Tab 1: 產業排名 =====
 with tab1:
-    momentum = calc_industry_momentum(revenue_df, industry_map, params["lookback_months"])
-    flow = calc_industry_flow(chip_df, industry_map, params["lookback_days"])
+    momentum = calc_industry_momentum(revenue_df, industry_map,
+                                       params["lookback_months"], level=level)
+    flow = calc_industry_flow(chip_df, industry_map,
+                              params["lookback_days"], level=level)
     composite = industry_composite_score(momentum, flow, params["m_weight"], params["f_weight"])
 
     if composite.empty:
         st.warning("無足夠資料計算產業排名。")
     else:
-        st.subheader("產業綜合排名")
+        level_label = "次產業" if level == "sub_industry" else "大類"
+        st.subheader(f"產業綜合排名（{level_label}）")
 
         # 水平 bar chart
         fig_bar = px.bar(
@@ -132,7 +157,8 @@ with tab1:
 # ===== Tab 2: 輪動熱力圖 =====
 with tab2:
     rotation = industry_rotation_history(
-        revenue_df, chip_df, industry_map, params["rotation_periods"]
+        revenue_df, chip_df, industry_map, params["rotation_periods"],
+        level=level,
     )
     if rotation.empty:
         st.warning("無足夠資料產生輪動歷史。")
@@ -154,15 +180,37 @@ with tab2:
 
 # ===== Tab 3: 產業成分股明細 =====
 with tab3:
-    industries = industry_map["industry_category"].unique().tolist()
-    industries.sort()
-    selected_industry = st.selectbox("選擇產業", industries)
+    # 根據 level 選擇分類欄位
+    if level == "sub_industry" and "sub_industry" in industry_map.columns:
+        # 兩層鑽取：先選大類，再選次產業
+        sector_col = "sector" if "sector" in industry_map.columns else "industry_category"
+        sectors = sorted(industry_map[sector_col].dropna().unique().tolist())
+        selected_sector = st.selectbox("選擇大類", sectors)
 
-    stocks_in_industry = industry_map[
-        industry_map["industry_category"] == selected_industry
-    ]["stock_id"].tolist()
+        sub_df = industry_map[industry_map[sector_col] == selected_sector]
+        subs = sub_df["sub_industry"].dropna().unique().tolist()
+        if subs:
+            subs.sort()
+            selected_sub = st.selectbox("選擇次產業", ["全部"] + subs)
+            if selected_sub == "全部":
+                stocks_in_industry = sub_df["stock_id"].tolist()
+                display_title = f"{selected_sector}（全部）"
+            else:
+                stocks_in_industry = sub_df[sub_df["sub_industry"] == selected_sub]["stock_id"].tolist()
+                display_title = f"{selected_sector} / {selected_sub}"
+        else:
+            stocks_in_industry = sub_df["stock_id"].tolist()
+            display_title = selected_sector
+    else:
+        group_col = "industry_category" if "industry_category" in industry_map.columns else "sector"
+        industries = sorted(industry_map[group_col].dropna().unique().tolist())
+        selected_industry = st.selectbox("選擇產業", industries)
+        stocks_in_industry = industry_map[
+            industry_map[group_col] == selected_industry
+        ]["stock_id"].tolist()
+        display_title = selected_industry
 
-    st.subheader(f"{selected_industry} — 共 {len(stocks_in_industry)} 支")
+    st.subheader(f"{display_title} — 共 {len(stocks_in_industry)} 支")
 
     if not revenue_df.empty:
         latest_rev = revenue_df.sort_values("date").groupby("stock_id").last().reset_index()
@@ -186,3 +234,75 @@ with tab3:
             use_container_width=True,
             hide_index=True,
         )
+
+# ===== Tab 4: 供應鏈分析 =====
+with tab4:
+    chain_names = get_chain_names()
+    selected_chain = st.selectbox("選擇供應鏈", chain_names)
+
+    if selected_chain:
+        stages = SUPPLY_CHAIN[selected_chain]
+        st.caption(f"供應鏈順序（上游→下游）：{' → '.join(stages)}")
+
+        # 供應鏈營收動能
+        chain_mom = calc_chain_momentum(
+            selected_chain, revenue_df, industry_map,
+            lookback_months=params["lookback_months"],
+        )
+
+        if not chain_mom.empty:
+            st.subheader("各環節營收動能")
+
+            # 供應鏈流程圖：水平 bar chart，按上下游順序排列
+            fig_chain = px.bar(
+                chain_mom,
+                y="sub_industry",
+                x="avg_yoy",
+                orientation="h",
+                color="avg_yoy",
+                color_continuous_scale=[[0, "#EF5350"], [0.5, "#757575"], [1, "#26A69A"]],
+                labels={"avg_yoy": "平均營收 YoY%", "sub_industry": "環節"},
+                text="avg_yoy",
+            )
+            fig_chain.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig_chain.update_layout(
+                height=max(300, len(chain_mom) * 50),
+                template="plotly_dark",
+                yaxis=dict(categoryorder="array", categoryarray=list(reversed(stages))),
+            )
+            st.plotly_chart(fig_chain, use_container_width=True)
+
+            # 明細表
+            display_mom = chain_mom[["sub_industry", "avg_yoy", "median_yoy", "stock_count"]].copy()
+            display_mom.columns = ["環節", "平均YoY%", "中位YoY%", "家數"]
+            display_mom["平均YoY%"] = display_mom["平均YoY%"].map(lambda x: f"{x:.1f}%")
+            display_mom["中位YoY%"] = display_mom["中位YoY%"].map(lambda x: f"{x:.1f}%")
+            st.dataframe(display_mom.reset_index(drop=True), use_container_width=True, hide_index=True)
+        else:
+            st.info("無足夠資料計算供應鏈動能。")
+
+        # 領先落後矩陣
+        st.subheader("領先落後矩陣")
+        st.caption("正值 = 行領先列 N 個月，負值 = 行落後列 N 個月")
+
+        lead_lag = calc_chain_lead_lag(
+            selected_chain, revenue_df, industry_map,
+            periods=params["rotation_periods"],
+        )
+
+        if not lead_lag.empty:
+            fig_ll = px.imshow(
+                lead_lag.values.astype(float),
+                x=lead_lag.columns.tolist(),
+                y=lead_lag.index.tolist(),
+                text_auto=True,
+                color_continuous_scale="RdBu",
+                labels={"color": "領先月數"},
+            )
+            fig_ll.update_layout(
+                height=max(350, len(lead_lag) * 50),
+                template="plotly_dark",
+            )
+            st.plotly_chart(fig_ll, use_container_width=True)
+        else:
+            st.info("無足夠資料計算領先落後關係。")

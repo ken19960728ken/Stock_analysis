@@ -105,6 +105,39 @@ def rolling_ic_mean(ic_df: pd.DataFrame, window: int = 60) -> pd.Series:
     return s.rolling(window, min_periods=max(window // 3, 5)).mean()
 
 
+def zscore_industry_neutral(
+    df: pd.DataFrame,
+    factor_col: str,
+    industry_col: str = "sector",
+) -> pd.Series:
+    """產業中性化 Z-Score：同日期同產業內做截面 Z-Score，消除產業偏差。
+
+    Parameters:
+        df: DataFrame，必須包含 date, stock_id, factor_col, industry_col 欄位
+        factor_col: 要中性化的因子欄位名稱
+        industry_col: 產業分類欄位名稱（預設 "sector"）
+
+    Returns:
+        pd.Series: 產業中性化後的 Z-Score（與 df 同 index）
+    """
+    if factor_col not in df.columns or industry_col not in df.columns:
+        return pd.Series(0.0, index=df.index)
+
+    def _zscore_group(group):
+        vals = group[factor_col]
+        s = vals.dropna()
+        if len(s) <= 1 or s.std() == 0:
+            return pd.Series(0.0, index=group.index)
+        mean = s.mean()
+        std = s.std()
+        z = (vals - mean) / std
+        return z.clip(-3, 3)
+
+    return df.groupby(["date", industry_col], group_keys=False).apply(
+        _zscore_group, include_groups=False
+    )
+
+
 def factor_correlation_matrix(factors: dict) -> pd.DataFrame:
     """多因子相關性矩陣。factors: {name: pd.Series}"""
     df = pd.DataFrame(factors)

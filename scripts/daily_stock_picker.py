@@ -26,7 +26,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.strategies import STRATEGY_MAP
-from core.db import get_engine
+from analysis.utils.peer_comparison import calc_peer_percentile, get_peers
+from core.db import get_engine, safe_read_sql
 from core.logger import setup_logger
 
 logger = setup_logger("daily_stock_picker")
@@ -47,6 +48,7 @@ STRATEGY_WEIGHTS = {
     "量價動能": 0.7,
     "營收動能": 0.6,
     "波動率壓縮突破": 0.5,
+    "次產業輪動": 0.5,
 }
 
 # 各策略所需補充資料
@@ -61,6 +63,7 @@ STRATEGY_DATA_NEEDS = {
     "量價動能": [],
     "營收動能": ["month_revenue", "stock_per"],
     "波動率壓縮突破": [],
+    "次產業輪動": ["month_revenue", "chip_institutional"],
 }
 
 DEFAULT_TOP_N = 20
@@ -71,7 +74,7 @@ LOOKBACK_TRADE_DAYS = 60  # 載入最近 N 交易日資料
 # 合法表名白名單
 VALID_TABLES = frozenset({
     "daily_price", "chip_institutional", "stock_per", "month_revenue",
-    "twstock_code",
+    "twstock_code", "industry_classification",
 })
 
 
@@ -137,6 +140,34 @@ def load_stock_name(engine, stock_id: str) -> str:
         return stock_id
 
 
+def load_industry_map() -> dict[str, dict]:
+    """載入產業分類，回傳 {stock_id: {"sector": ..., "sub_industry": ...}}"""
+    # 優先讀新表
+    try:
+        df = safe_read_sql("SELECT stock_id, sector, sub_industry FROM industry_classification")
+        if not df.empty:
+            result = {}
+            for _, row in df.iterrows():
+                result[row["stock_id"]] = {
+                    "sector": row["sector"],
+                    "sub_industry": row.get("sub_industry"),
+                }
+            return result
+    except Exception:
+        pass
+
+    # Fallback 舊表
+    try:
+        df = safe_read_sql("SELECT stock_id, industry_category FROM industry_mapping")
+        if not df.empty:
+            return {row["stock_id"]: {"sector": row["industry_category"], "sub_industry": None}
+                    for _, row in df.iterrows()}
+    except Exception:
+        pass
+
+    return {}
+
+
 def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                 strategy_name: str, start_date: str,
                 end_date: str | None = None) -> pd.DataFrame:
@@ -146,6 +177,21 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
         return df
 
     df = df.sort_values("date").copy()
+
+    # 次產業輪動策略需要 sub_industry 欄位
+    if strategy_name == "次產業輪動":
+        try:
+            ind = safe_read_sql(
+                "SELECT stock_id, sub_industry FROM industry_classification "
+                "WHERE stock_id = %(sid)s LIMIT 1",
+                params={"sid": stock_id},
+            )
+            if not ind.empty:
+                df["sub_industry"] = ind.iloc[0]["sub_industry"]
+            else:
+                df["sub_industry"] = None
+        except Exception:
+            df["sub_industry"] = None
 
     for table in needs:
         extra = _load_table(engine, table, stock_id, start_date, end_date)
@@ -282,7 +328,9 @@ def filter_and_rank(results: list[dict], top_n: int,
 # ===================================================================
 
 def generate_report(ranked: list[dict], engine, strategies_used: list[str],
-                    total_scanned: int, report_date: str) -> str:
+                    total_scanned: int, report_date: str,
+                    industry_map: dict | None = None,
+                    peer_data: dict | None = None) -> str:
     """生成 Markdown 報告"""
     lines = []
     lines.append(f"# 每日選股報告 — {report_date}\n")
@@ -307,6 +355,31 @@ def generate_report(ranked: list[dict], engine, strategies_used: list[str],
 
             lines.append("| 指標 | 數值 |")
             lines.append("|------|------|")
+            # 產業標注 + 同業排名
+            if industry_map and r["stock_id"] in industry_map:
+                ind = industry_map[r["stock_id"]]
+                sector = ind.get("sector", "—")
+                sub = ind.get("sub_industry")
+                industry_label = f"{sector}" + (f" / {sub}" if sub else "")
+                peer_info = peer_data.get(r["stock_id"], {}) if peer_data else {}
+                peer_count = peer_info.get("peer_count", "")
+                if peer_count:
+                    industry_label += f"（同業 {peer_count} 檔）"
+                lines.append(f"| 產業 | {industry_label} |")
+                # 同業百分位摘要
+                if peer_info:
+                    pct_parts = []
+                    pct_labels = {
+                        "per_pct": "PER",
+                        "rev_yoy_pct": "營收成長",
+                        "inst_net_buy_pct": "法人買超",
+                    }
+                    for key, label in pct_labels.items():
+                        if key in peer_info:
+                            pct_parts.append(f"{label} 前 {100 - peer_info[key]:.0f}%")
+                    if pct_parts:
+                        sep = " | "
+                        lines.append(f"| 同業百分位 | {sep.join(pct_parts)} |")
             lines.append(f"| 收盤價 | {r['last_close']:.1f} |")
             lines.append(f"| 週漲跌幅 | {r['week_return']:+.1f}% |")
             lines.append(f"| 週量能變化 | {r['week_vol_change']:+.1f}% |")
@@ -324,6 +397,42 @@ def generate_report(ranked: list[dict], engine, strategies_used: list[str],
                     lines.append(
                         f"- {name}: 近期評分 {v['recent_score']:+.0f}{date_str}"
                     )
+            lines.append("")
+
+        # 產業分佈摘要（雙層：sector → sub_industry）
+        if industry_map and ranked:
+            sector_counts: dict[str, int] = {}
+            sub_counts: dict[str, dict[str, int]] = {}  # sector -> {sub: count}
+            for r in ranked:
+                sid = r["stock_id"]
+                if sid in industry_map:
+                    sec = industry_map[sid].get("sector", "未分類")
+                    sub = industry_map[sid].get("sub_industry")
+                else:
+                    sec = "未分類"
+                    sub = None
+                sector_counts[sec] = sector_counts.get(sec, 0) + 1
+                if sub:
+                    sub_counts.setdefault(sec, {})
+                    sub_counts[sec][sub] = sub_counts[sec].get(sub, 0) + 1
+
+            lines.append("## 產業分佈\n")
+            lines.append("| 產業 | 次產業 | 檔數 | 佔比 |")
+            lines.append("|------|--------|------|------|")
+            for sec, cnt in sorted(sector_counts.items(), key=lambda x: -x[1]):
+                pct = cnt / len(ranked) * 100
+                subs = sub_counts.get(sec, {})
+                if subs:
+                    # 第一行顯示大類
+                    first_sub = True
+                    for sub_name, sub_cnt in sorted(subs.items(), key=lambda x: -x[1]):
+                        if first_sub:
+                            lines.append(f"| {sec} | {sub_name} | {sub_cnt} | {pct:.0f}% |")
+                            first_sub = False
+                        else:
+                            lines.append(f"| | {sub_name} | {sub_cnt} | |")
+                else:
+                    lines.append(f"| {sec} | — | {cnt} | {pct:.0f}% |")
             lines.append("")
 
     lines.append("---\n")
@@ -383,8 +492,8 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
             report_date = datetime.now().strftime("%Y-%m-%d")
 
     start_date = (datetime.strptime(report_date, "%Y-%m-%d") - timedelta(days=LOOKBACK_TRADE_DAYS * 2)).strftime("%Y-%m-%d")
-    # 指定日期時限制資料上限，避免看到未來資料
-    end_date = report_date if target_date else None
+    # 一律限制資料上限為 report_date，避免 look-ahead bias
+    end_date = report_date
 
     print(f"\n{'='*60}")
     print(f"每日選股報告 — {report_date}")
@@ -426,8 +535,49 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
     ranked = filter_and_rank(results, top_n)
     print(f"最終推薦: {len(ranked)} 支\n")
 
+    # 載入產業分類
+    ind_map = load_industry_map()
+    if ind_map:
+        print(f"產業分類: {len(ind_map)} 筆")
+
+    # 計算同業排名（為推薦股票附加百分位資訊）
+    peer_data = {}
+    if ind_map and ranked:
+        try:
+            ind_df = safe_read_sql("SELECT stock_id, sector, sub_industry FROM industry_classification")
+            all_per = safe_read_sql(
+                "SELECT DISTINCT ON (stock_id) stock_id, per, pbr, dividend_yield "
+                "FROM stock_per ORDER BY stock_id, date DESC"
+            )
+            all_rev = safe_read_sql(
+                "SELECT DISTINCT ON (stock_id) stock_id, month_revenue_year_on_year "
+                "FROM month_revenue ORDER BY stock_id, date DESC"
+            )
+            all_inst = safe_read_sql(
+                "SELECT DISTINCT ON (stock_id) * FROM chip_institutional ORDER BY stock_id, date DESC"
+            )
+            all_price = safe_read_sql(
+                "SELECT DISTINCT ON (stock_id) stock_id, close FROM daily_price ORDER BY stock_id, date DESC"
+            )
+
+            for r in ranked:
+                sid = r["stock_id"]
+                peers = get_peers(sid, ind_df, level="sub_industry")
+                from analysis.utils.peer_comparison import calc_peer_metrics
+                metrics = calc_peer_metrics(
+                    sid, peers,
+                    per_df=all_per, revenue_df=all_rev,
+                    price_df=all_price, inst_df=all_inst,
+                )
+                pct = calc_peer_percentile(sid, metrics)
+                pct["peer_count"] = len(peers)
+                peer_data[sid] = pct
+        except Exception as e:
+            logger.debug(f"同業排名計算失敗: {e}")
+
     # 生成報告
-    report = generate_report(ranked, engine, strategies_used, len(stock_ids), report_date)
+    report = generate_report(ranked, engine, strategies_used, len(stock_ids), report_date,
+                             industry_map=ind_map, peer_data=peer_data)
 
     # 寫入檔案
     if output_dir is None:
