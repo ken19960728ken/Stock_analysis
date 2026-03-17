@@ -48,9 +48,11 @@ class DailyUpdater:
         if price_result == "no_data":
             logger.info(f"{date_str} 無價格資料（非交易日），跳過全部更新")
             return False
+        if price_result == "api_error":
+            logger.error(f"{date_str} 價格 API 查詢失敗，視為交易日繼續執行")
 
         price_ok = price_result == "ok"
-        if not price_ok:
+        if not price_ok and price_result != "api_error":
             logger.warning(f"{date_str} 價格資料寫入失敗，仍繼續更新籌碼資料")
 
         # 2. 籌碼資料（6 個 dataset）
@@ -71,6 +73,7 @@ class DailyUpdater:
         回傳:
             "ok"         — 取得資料且寫入成功
             "no_data"    — 無資料（非交易日）
+            "api_error"  — API 查詢失敗（配額/網路等）
             "write_error" — 取得資料但寫入失敗
         """
         logger.info(f"[價格] 批量查詢 {date_str} ...")
@@ -84,7 +87,7 @@ class DailyUpdater:
             df = self.limiter.call_with_retry(_call)
         except Exception as e:
             logger.error(f"[價格] 查詢失敗: {e}")
-            return "no_data"
+            return "api_error"
 
         if df is None or df.empty:
             return "no_data"
