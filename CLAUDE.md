@@ -192,6 +192,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `strategy_report.py` | 通用策略掃描回測報告（22 策略 + 0050 基準比較） |
 | `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
+| `db_integrity_check.py` | DB 完整性掃描（交易日清單、每日記錄數、重複偵測、跨表一致性） |
+| `backfill_missing_data.py` | 一次性資料補抓（stock_per/market_value 批量 + DailyUpdater 補缺漏） |
+| `test_email.py` | Cloud Run Email 寄送測試（stderr 輸出，用於 Cloud Logging 驗證） |
 | `scrape_sub_industry.py` | 從 HiStock 爬取次產業分類 → `data/sub_industry_mapping.json`（一次性工具，`--diff` 比較差異） |
 
 ### Scanner 模組 `scanners/`
