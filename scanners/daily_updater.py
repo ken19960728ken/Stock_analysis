@@ -47,7 +47,7 @@ class DailyUpdater:
         price_result = self._fetch_price(date_str)
         if price_result == "no_data":
             logger.info(f"{date_str} 無價格資料（非交易日），跳過全部更新")
-            return
+            return False
 
         price_ok = price_result == "ok"
         if not price_ok:
@@ -63,6 +63,7 @@ class DailyUpdater:
             f"=== 每日更新完成: {date_str} | "
             f"成功 {success_count}/{total_count} 個 dataset ==="
         )
+        return True
 
     def _fetch_price(self, date_str):
         """批量取得全市場當日價格。

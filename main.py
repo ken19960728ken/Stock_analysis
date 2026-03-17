@@ -223,7 +223,11 @@ def run_daily_schedule():
             return
 
         # Step 1: 更新資料（價格 + 籌碼）
-        DailyUpdater().run()
+        is_trading_day = DailyUpdater().run()
+
+        if not is_trading_day:
+            logger.info("非交易日，跳過選股報告與 Email 推送")
+            continue
 
         # Step 2: 產出每日選股報告
         try:
@@ -419,10 +423,31 @@ def main():
         run_init_index()
         return
 
-    # --daily：手動執行一次今日更新
+    # --daily：手動執行一次今日更新（含選股報告 + Email 推送）
     if args.daily:
         from scanners.daily_updater import DailyUpdater
-        DailyUpdater().run()
+        is_trading_day = DailyUpdater().run()
+
+        if not is_trading_day:
+            logger.info("非交易日，跳過選股報告與 Email 推送")
+            return
+
+        # 產出每日選股報告 + Email 推送
+        try:
+            from scripts.daily_stock_picker import run_daily_pick
+            logger.info("開始產出每日選股報告...")
+            report_path = run_daily_pick()
+            if report_path:
+                logger.info(f"選股報告已產出: {report_path}")
+                try:
+                    from core.notifier import send_report_email
+                    send_report_email(report_path)
+                except Exception as e:
+                    logger.error(f"Email 推送異常: {e}")
+            else:
+                logger.warning("選股報告產出失敗")
+        except Exception as e:
+            logger.error(f"選股報告產出異常: {e}")
         return
 
     # --daily-schedule：常駐每日排程
