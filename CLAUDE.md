@@ -35,7 +35,7 @@ uv run python main.py --scanner all            # 依序執行全部 scanner
 uv run python main.py --daily                  # 手動執行今日更新（資料抓取 + 選股報告，向後相容）
 uv run python main.py --daily-data             # 僅資料抓取（價格 + 籌碼 + 估值面）
 uv run python main.py --daily-report           # 僅選股報告 + Email 推送
-uv run python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新 + 選股報告
+uv run python main.py --daily-schedule         # 常駐排程：每天 18:30 UTC+8 自動更新 + 選股報告
 
 # === 工具指令 ===
 uv run python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
@@ -170,7 +170,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry） |
 | `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report 兩個 Job（amd64 交叉建置） |
 | `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（amd64 交叉建置） |
-| `deploy/setup-scheduler.sh` | Cloud Scheduler 雙排程（stock-data 17:00 + stock-report 17:10 UTC+8） |
+| `deploy/setup-scheduler.sh` | Cloud Scheduler 雙排程（stock-data 18:30 + stock-report 18:40 UTC+8） |
 | `deploy/部署流程.md` | 完整部署文件（含環境版本 + 踩坑紀錄） |
 
 ### Dashboard 模組 `dashboard/`
@@ -298,8 +298,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- **Cloud Run 雙 Job 架構**：`stock-data`（`--daily-data`，17:00 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，17:10 UTC+8）負責選股報告 + Email 推送。兩者獨立排程，資料失敗不影響報告（可用前一天資料），報告可獨立重跑。`--daily` 為向後相容旗標，依序執行兩者。
-- 每日排程 (`--daily-schedule`) 17:00 UTC+8 自動執行（本地常駐版）：`run_daily_data()` 抓資料 → `run_daily_report()` 產出選股報告 + Email 推送（含 .md 附件，環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
+- **Cloud Run 雙 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送。兩者獨立排程，資料失敗不影響報告（可用前一天資料），報告可獨立重跑。`--daily` 為向後相容旗標，依序執行兩者。交易日判斷使用 TWSE 官方開休市行事曆 API。
+- 每日排程 (`--daily-schedule`) 18:30 UTC+8 自動執行（本地常駐版）：`run_daily_data()` 抓資料 → `run_daily_report()` 產出選股報告 + Email 推送（含 .md 附件，環境變數缺失時靜默跳過）。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 - **macOS 休眠會暫停 `time.sleep()` 計時器**，導致 `--daily-schedule` 排程延遲或漏觸發。排程未觸發時需手動 kill 舊進程並重啟，再用 `--daily` + `--pick-stocks` 補跑。
 - `--pick-stocks` 單獨執行只產報告不寄信；`--daily-report` 和 `--daily-schedule` 會自動寄信。手動補產報告後可用 `--daily-report` 或另外呼叫 `send_report_email()` 寄送。
 

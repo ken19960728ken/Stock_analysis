@@ -227,13 +227,13 @@ def run_daily_report():
 
 
 def run_daily_schedule():
-    """常駐每日排程：17:00 UTC+8 自動更新資料 + 產出選股報告"""
+    """常駐每日排程：18:30 UTC+8 自動更新資料 + 產出選股報告"""
     TZ = timezone(timedelta(hours=8))
-    logger.info("每日排程模式啟動，17:00 UTC+8 自動執行（Ctrl+C 可安全退出）")
+    logger.info("每日排程模式啟動，18:30 UTC+8 自動執行（Ctrl+C 可安全退出）")
 
     while True:
         now = datetime.now(TZ)
-        target = now.replace(hour=17, minute=0, second=0, microsecond=0)
+        target = now.replace(hour=18, minute=30, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         sleep_sec = (target - now).total_seconds()

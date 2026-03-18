@@ -1,17 +1,28 @@
 """
 Tests for daily_updater.py
 Tests the DailyUpdater class which batch-fetches daily price + 6 chip datasets
-from FinMind API for the entire market.
++ valuation data from FinMind API for the entire market.
 """
 
 import datetime
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 import pytest
 
 from scanners.chip_scanner import CHIP_DATASETS
 from scanners.daily_updater import DailyUpdater
+
+
+@pytest.fixture(autouse=True)
+def mock_twse_holidays():
+    """Mock TWSE 行事曆 API，避免測試發出真實 HTTP 請求。
+    回傳 2023-01-01 為休市日，其餘日期視為交易日。"""
+    with patch(
+        "scanners.daily_updater._fetch_twse_holidays",
+        return_value={"2023-01-01"},
+    ):
+        yield
 
 
 # ============================================================================
@@ -48,14 +59,18 @@ class TestDailyUpdaterRun:
         self, mock_finmind_client, mock_rate_limiter, mock_db_save
     ):
         """run() without args uses date.today()"""
-        updater = DailyUpdater()
-        # Return empty so it stops early (non-trading day path)
-        updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
-        updater.run()
-        # Verify API was called with today's date
+        # 固定為週三，確保 is_trading_day 判定為交易日
+        fake_today = datetime.date(2023, 1, 4)  # 2023-01-04 是週三
+        with patch("scanners.daily_updater.date") as mock_date:
+            mock_date.today.return_value = fake_today
+            mock_date.side_effect = lambda *a, **kw: datetime.date(*a, **kw)
+
+            updater = DailyUpdater()
+            updater.fm_loader.taiwan_stock_daily.return_value = pd.DataFrame()
+            updater.run()
+
         call_kwargs = updater.fm_loader.taiwan_stock_daily.call_args
-        today_str = datetime.date.today().strftime("%Y-%m-%d")
-        assert call_kwargs.kwargs.get("start_date") == today_str
+        assert call_kwargs.kwargs.get("start_date") == "2023-01-04"
 
     def test_run_with_string_date(
         self, mock_finmind_client, mock_rate_limiter, mock_db_save
