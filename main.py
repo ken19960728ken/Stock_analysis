@@ -11,7 +11,6 @@ Usage:
     python main.py --scanner industry       # 產業分類（FinMind taiwan_stock_info）
     python main.py --scanner all            # Yahoo 先跑，再跑 FinMind（受預算控制）
     python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
-    python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新
     python main.py --init-index             # 從遠端 DB 初始化本地索引
     python main.py --usage                  # 查詢 FinMind API 使用量
     python main.py --scanner chip --budget 50   # 限制 FinMind API 預算
@@ -31,7 +30,7 @@ import argparse
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from core.logger import setup_logger
 
@@ -226,36 +225,6 @@ def run_daily_report():
         logger.error(f"選股報告產出異常: {e}")
 
 
-def run_daily_schedule():
-    """常駐每日排程：18:30 UTC+8 自動更新資料 + 產出選股報告"""
-    TZ = timezone(timedelta(hours=8))
-    logger.info("每日排程模式啟動，18:30 UTC+8 自動執行（Ctrl+C 可安全退出）")
-
-    while True:
-        now = datetime.now(TZ)
-        target = now.replace(hour=18, minute=30, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        sleep_sec = (target - now).total_seconds()
-        logger.info(
-            f"下次執行: {target.strftime('%Y-%m-%d %H:%M')}，"
-            f"等待 {sleep_sec:.0f} 秒"
-        )
-
-        try:
-            time.sleep(sleep_sec)
-        except KeyboardInterrupt:
-            logger.info("每日排程模式已安全退出")
-            return
-
-        is_trading_day = run_daily_data()
-        if not is_trading_day:
-            logger.info("非交易日，跳過選股報告與 Email 推送")
-            continue
-
-        run_daily_report()
-
-
 def main():
     parser = argparse.ArgumentParser(description="台灣股市量化交易系統 — 資料撈取")
     parser.add_argument(
@@ -298,11 +267,6 @@ def main():
         "--daily-report",
         action="store_true",
         help="僅執行每日選股報告 + Email 推送",
-    )
-    parser.add_argument(
-        "--daily-schedule",
-        action="store_true",
-        help="常駐排程：每天 17:00 UTC+8 自動執行每日更新",
     )
     parser.add_argument(
         "--dashboard",
@@ -458,14 +422,6 @@ def main():
             logger.info("非交易日，跳過選股報告與 Email 推送")
             return
         run_daily_report()
-        return
-
-    # --daily-schedule：常駐每日排程
-    if args.daily_schedule:
-        try:
-            run_daily_schedule()
-        except KeyboardInterrupt:
-            logger.info("每日排程模式已安全退出")
         return
 
     # --schedule 不可與 --scanner 或 --budget 同時使用
