@@ -19,5 +19,5 @@ COPY analysis/__init__.py analysis/
 COPY data/ data/
 COPY main.py .
 
-# Cloud Run Job: run daily pipeline then exit
-CMD ["uv", "run", "python", "main.py", "--daily"]
+# Cloud Run Job: 預設執行資料抓取，report Job 在部署時用 --command 覆蓋
+CMD ["uv", "run", "python", "main.py", "--daily-data"]

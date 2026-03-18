@@ -198,10 +198,36 @@ def run_schedule():
             return
 
 
+def run_daily_data():
+    """執行每日資料抓取（價格 + 籌碼 + 估值面）。回傳 True 表示為交易日。"""
+    from scanners.daily_updater import DailyUpdater
+    is_trading_day = DailyUpdater().run()
+    if not is_trading_day:
+        logger.info("非交易日，跳過資料更新")
+    return is_trading_day
+
+
+def run_daily_report():
+    """執行每日選股報告 + Email 推送。"""
+    try:
+        from scripts.daily_stock_picker import run_daily_pick
+        logger.info("開始產出每日選股報告...")
+        report_path = run_daily_pick()
+        if report_path:
+            logger.info(f"選股報告已產出: {report_path}")
+            try:
+                from core.notifier import send_report_email
+                send_report_email(report_path)
+            except Exception as e:
+                logger.error(f"Email 推送異常: {e}")
+        else:
+            logger.warning("選股報告產出失敗")
+    except Exception as e:
+        logger.error(f"選股報告產出異常: {e}")
+
+
 def run_daily_schedule():
     """常駐每日排程：17:00 UTC+8 自動更新資料 + 產出選股報告"""
-    from scanners.daily_updater import DailyUpdater
-
     TZ = timezone(timedelta(hours=8))
     logger.info("每日排程模式啟動，17:00 UTC+8 自動執行（Ctrl+C 可安全退出）")
 
@@ -222,30 +248,12 @@ def run_daily_schedule():
             logger.info("每日排程模式已安全退出")
             return
 
-        # Step 1: 更新資料（價格 + 籌碼）
-        is_trading_day = DailyUpdater().run()
-
+        is_trading_day = run_daily_data()
         if not is_trading_day:
             logger.info("非交易日，跳過選股報告與 Email 推送")
             continue
 
-        # Step 2: 產出每日選股報告
-        try:
-            from scripts.daily_stock_picker import run_daily_pick
-            logger.info("開始產出每日選股報告...")
-            report_path = run_daily_pick()
-            if report_path:
-                logger.info(f"選股報告已產出: {report_path}")
-                # Step 3: Email 推送
-                try:
-                    from core.notifier import send_report_email
-                    send_report_email(report_path)
-                except Exception as e:
-                    logger.error(f"Email 推送異常: {e}")
-            else:
-                logger.warning("選股報告產出失敗")
-        except Exception as e:
-            logger.error(f"選股報告產出異常: {e}")
+        run_daily_report()
 
 
 def main():
@@ -279,7 +287,17 @@ def main():
     parser.add_argument(
         "--daily",
         action="store_true",
-        help="手動執行今日更新（批量價格 + 籌碼，< 1 分鐘）",
+        help="手動執行今日更新（資料抓取 + 選股報告 + Email，向後相容）",
+    )
+    parser.add_argument(
+        "--daily-data",
+        action="store_true",
+        help="僅執行每日資料抓取（價格 + 籌碼 + 估值面）",
+    )
+    parser.add_argument(
+        "--daily-report",
+        action="store_true",
+        help="僅執行每日選股報告 + Email 推送",
     )
     parser.add_argument(
         "--daily-schedule",
@@ -423,31 +441,23 @@ def main():
         run_init_index()
         return
 
-    # --daily：手動執行一次今日更新（含選股報告 + Email 推送）
-    if args.daily:
-        from scanners.daily_updater import DailyUpdater
-        is_trading_day = DailyUpdater().run()
+    # --daily-data：僅執行資料抓取
+    if args.daily_data:
+        run_daily_data()
+        return
 
+    # --daily-report：僅執行選股報告 + Email
+    if args.daily_report:
+        run_daily_report()
+        return
+
+    # --daily：向後相容，資料抓取 + 選股報告
+    if args.daily:
+        is_trading_day = run_daily_data()
         if not is_trading_day:
             logger.info("非交易日，跳過選股報告與 Email 推送")
             return
-
-        # 產出每日選股報告 + Email 推送
-        try:
-            from scripts.daily_stock_picker import run_daily_pick
-            logger.info("開始產出每日選股報告...")
-            report_path = run_daily_pick()
-            if report_path:
-                logger.info(f"選股報告已產出: {report_path}")
-                try:
-                    from core.notifier import send_report_email
-                    send_report_email(report_path)
-                except Exception as e:
-                    logger.error(f"Email 推送異常: {e}")
-            else:
-                logger.warning("選股報告產出失敗")
-        except Exception as e:
-            logger.error(f"選股報告產出異常: {e}")
+        run_daily_report()
         return
 
     # --daily-schedule：常駐每日排程

@@ -58,9 +58,13 @@ class DailyUpdater:
         # 2. 籌碼資料（6 個 dataset）
         chip_results = self._fetch_chip(date_str)
 
-        # 3. 結算報告
-        success_count = (1 if price_ok else 0) + sum(chip_results.values())
-        total_count = 1 + len(CHIP_DATASETS)
+        # 3. 估值面資料（stock_per + market_value）
+        valuation_results = self._backfill_valuation(date_str)
+
+        # 4. 結算報告
+        valuation_ok = sum(valuation_results.values())
+        success_count = (1 if price_ok else 0) + sum(chip_results.values()) + valuation_ok
+        total_count = 1 + len(CHIP_DATASETS) + len(valuation_results)
         logger.info(
             f"=== 每日更新完成: {date_str} | "
             f"成功 {success_count}/{total_count} 個 dataset ==="
@@ -144,6 +148,49 @@ class DailyUpdater:
             # 三大法人需 pivot
             if table_name == "chip_institutional":
                 df = _pivot_institutional(df)
+
+            ok = save_to_db(df, table_name)
+            row_count = len(df) if ok else 0
+            logger.info(f"[{label}] 寫入 {row_count} 筆")
+            results[table_name] = ok
+            self.limiter.wait()
+
+        return results
+
+    # 估值面批量 API：(DataLoader 方法名, DB 表名, 說明)
+    VALUATION_DATASETS = [
+        ("taiwan_stock_per_pbr", "stock_per", "本益比/股價淨值比/殖利率"),
+        ("taiwan_stock_market_value", "market_value", "市值"),
+    ]
+
+    def _backfill_valuation(self, date_str):
+        """批量取得當日 stock_per + market_value。回傳 dict: {table_name: bool}。"""
+        results = {}
+
+        for method_name, table_name, label in self.VALUATION_DATASETS:
+            logger.info(f"[{label}] 批量查詢 {date_str} ...")
+
+            try:
+                fetch_fn = getattr(self.fm_loader, method_name)
+
+                def _call(fn=fetch_fn):
+                    return fn(start_date=date_str, end_date=date_str)
+
+                df = self.limiter.call_with_retry(_call)
+            except Exception as e:
+                logger.error(f"[{label}] 查詢失敗: {e}")
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            if df is None or df.empty:
+                logger.info(f"[{label}] 無資料")
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"]).dt.date
 
             ok = save_to_db(df, table_name)
             row_count = len(df) if ok else 0
