@@ -2,11 +2,14 @@
 每日選股報告測試 — 全部 mock，不需真實 DB
 
 覆蓋：
-  - 投票機制正確性
+  - 投票機制正確性（舊版 score_stock + 新版 _score_stock_cached）
   - 流動性 + 訊號日期過濾
   - .md 報告格式正確
   - 策略權重設定完整
+  - 批量載入函式正確性
 """
+
+import os
 
 import numpy as np
 import pandas as pd
@@ -19,6 +22,13 @@ from scripts.daily_stock_picker import (
     score_stock,
     filter_and_rank,
     generate_report,
+    scan_stocks,
+    build_report,
+    _load_all_tables,
+    _build_stock_cache,
+    _load_name_map,
+    _enrich_from_cache,
+    _score_stock_cached,
 )
 
 
@@ -51,6 +61,18 @@ def sample_daily_price_df():
     })
 
 
+def _make_price_df(stock_id="2330", periods=50, volume=10_000_000):
+    """建立測試用 OHLCV DataFrame"""
+    dates = pd.date_range("2023-01-01", periods=periods, freq="B")
+    close = np.array([500 + i * 2.0 for i in range(periods)])
+    return pd.DataFrame({
+        "date": dates, "stock_id": stock_id,
+        "open": close - 1, "high": close + 3, "low": close - 3,
+        "close": close,
+        "volume": [volume] * periods,
+    })
+
+
 # ============================================================================
 # TestStrategyWeights
 # ============================================================================
@@ -76,7 +98,7 @@ class TestStrategyWeights:
 
 
 # ============================================================================
-# TestScoreStock
+# TestScoreStock（舊版，保留向後相容）
 # ============================================================================
 
 class TestScoreStock:
@@ -86,19 +108,10 @@ class TestScoreStock:
     @patch("scripts.daily_stock_picker.load_daily_price")
     def test_basic_scoring(self, mock_load, mock_enrich, mock_engine):
         """基本評分流程"""
-        np.random.seed(42)
-        dates = pd.date_range("2023-01-01", periods=50, freq="B")
-        close = np.array([500 + i * 2.0 for i in range(50)])
-        df = pd.DataFrame({
-            "date": dates, "stock_id": "2330",
-            "open": close - 1, "high": close + 3, "low": close - 3,
-            "close": close,
-            "volume": [10_000_000] * 50,  # 10000 張 > 500 張
-        })
+        df = _make_price_df("2330", 50, 10_000_000)
         mock_load.return_value = df
         mock_enrich.return_value = df.copy()
 
-        # 建立 mock 策略：都給正訊號
         strategies = {}
         for name in ["RSI 反轉", "價值投資"]:
             s = MagicMock()
@@ -117,29 +130,17 @@ class TestScoreStock:
     @patch("scripts.daily_stock_picker.load_daily_price")
     def test_low_volume_filtered(self, mock_load, mock_engine):
         """成交量太低 → 回傳 None"""
-        dates = pd.date_range("2023-01-01", periods=50, freq="B")
-        df = pd.DataFrame({
-            "date": dates, "stock_id": "9999",
-            "open": [100] * 50, "high": [105] * 50, "low": [95] * 50,
-            "close": [100] * 50,
-            "volume": [100_000] * 50,  # 100 張 < 500 張
-        })
+        df = _make_price_df("9999", 50, 100_000)
+        df["close"] = 100
         mock_load.return_value = df
-
         result = score_stock(mock_engine, "9999", {}, "2023-01-01", 5)
         assert result is None
 
     @patch("scripts.daily_stock_picker.load_daily_price")
     def test_short_data_filtered(self, mock_load, mock_engine):
         """資料量不足 → 回傳 None"""
-        dates = pd.date_range("2023-01-01", periods=5, freq="B")
-        df = pd.DataFrame({
-            "date": dates, "stock_id": "9999",
-            "open": [100] * 5, "high": [105] * 5, "low": [95] * 5,
-            "close": [100] * 5, "volume": [10_000_000] * 5,
-        })
+        df = _make_price_df("9999", 5, 10_000_000)
         mock_load.return_value = df
-
         result = score_stock(mock_engine, "9999", {}, "2023-01-01", 5)
         assert result is None
 
@@ -213,8 +214,8 @@ class TestFilterStocks:
 class TestReportGeneration:
     """報告格式正確性"""
 
-    def test_basic_report_structure(self, mock_engine):
-        """報告包含必要段落"""
+    def test_basic_report_structure(self):
+        """報告包含必要段落（使用 name_map）"""
         ranked = [{
             "stock_id": "2330",
             "total_score": 3.5,
@@ -232,10 +233,11 @@ class TestReportGeneration:
             },
         }]
 
-        with patch("scripts.daily_stock_picker.load_stock_name", return_value="台積電"):
-            report = generate_report(
-                ranked, mock_engine, ["RSI 反轉", "價值投資"], 2087, "2023-03-01"
-            )
+        report = generate_report(
+            ranked, strategies_used=["RSI 反轉", "價值投資"],
+            total_scanned=2087, report_date="2023-03-01",
+            name_map={"2330": "台積電"},
+        )
 
         assert "# 每日選股報告" in report
         assert "## 報告摘要" in report
@@ -245,13 +247,14 @@ class TestReportGeneration:
         assert "875.0" in report
         assert "## 風險提示" in report
 
-    def test_empty_report(self, mock_engine):
+    def test_empty_report(self):
         """無推薦 → 有空報告"""
-        report = generate_report([], mock_engine, ["RSI 反轉"], 100, "2023-03-01")
+        report = generate_report([], strategies_used=["RSI 反轉"],
+                                 total_scanned=100, report_date="2023-03-01")
         assert "# 每日選股報告" in report
         assert "無符合條件" in report
 
-    def test_report_markdown_format(self, mock_engine):
+    def test_report_markdown_format(self):
         """報告為有效 Markdown"""
         ranked = [{
             "stock_id": "2330",
@@ -269,10 +272,284 @@ class TestReportGeneration:
             },
         }]
 
-        with patch("scripts.daily_stock_picker.load_stock_name", return_value="測試"):
-            report = generate_report(ranked, mock_engine, ["RSI 反轉"], 100, "2023-03-01")
+        report = generate_report(
+            ranked, strategies_used=["RSI 反轉"],
+            total_scanned=100, report_date="2023-03-01",
+            name_map={"2330": "測試"},
+        )
 
         # Markdown table 格式
         assert "|------|------|" in report
         # 標題格式
         assert report.startswith("#")
+
+
+# ============================================================================
+# TestLoadAllTables（批量載入）
+# ============================================================================
+
+class TestLoadAllTables:
+    """批量載入 4 張表"""
+
+    @patch("scripts.daily_stock_picker.safe_read_sql")
+    def test_loads_four_tables(self, mock_sql):
+        """呼叫 4 次 safe_read_sql，分別載入 4 張表"""
+        mock_sql.return_value = pd.DataFrame({"stock_id": [], "date": []})
+        result = _load_all_tables("2023-01-01", "2023-03-01")
+        assert set(result.keys()) == {"daily_price", "chip_institutional", "stock_per", "month_revenue"}
+        assert mock_sql.call_count == 4
+
+    @patch("scripts.daily_stock_picker.safe_read_sql")
+    def test_month_revenue_earlier_start(self, mock_sql):
+        """month_revenue 的 start_date 比其他表早 ~90 天"""
+        mock_sql.return_value = pd.DataFrame()
+        _load_all_tables("2023-06-01", "2023-09-01")
+        # 第 4 次呼叫（month_revenue）的 sd 參數應 < 2023-06-01
+        rev_call = mock_sql.call_args_list[3]
+        rev_params = rev_call[1].get("params", rev_call[0][1] if len(rev_call[0]) > 1 else {})
+        assert rev_params["sd"] < "2023-06-01"
+
+
+# ============================================================================
+# TestBuildStockCache（分組快取）
+# ============================================================================
+
+class TestBuildStockCache:
+    """分組邏輯"""
+
+    def test_groups_by_stock_id(self):
+        """依 stock_id 正確分組"""
+        df = pd.DataFrame({
+            "stock_id": ["2330", "2330", "2317", "2317"],
+            "date": pd.date_range("2023-01-01", periods=2).tolist() * 2,
+            "close": [500, 505, 100, 102],
+        })
+        cache = _build_stock_cache(df)
+        assert set(cache.keys()) == {"2330", "2317"}
+        assert len(cache["2330"]) == 2
+        assert len(cache["2317"]) == 2
+
+    def test_empty_dataframe(self):
+        """空 DataFrame → 空 dict"""
+        assert _build_stock_cache(pd.DataFrame()) == {}
+
+    def test_none_input(self):
+        """None → 空 dict"""
+        assert _build_stock_cache(None) == {}
+
+
+# ============================================================================
+# TestScoreStockCached（快取評分）
+# ============================================================================
+
+class TestScoreStockCached:
+    """快取評分正確性"""
+
+    def test_basic_scoring_from_cache(self):
+        """從快取取資料 → 正常評分"""
+        df = _make_price_df("2330", 50, 10_000_000)
+        price_cache = {"2330": df}
+
+        strategies = {}
+        for name in ["RSI 反轉", "價值投資"]:
+            s = MagicMock()
+            signal_df = df.copy()
+            signal_df["signal"] = 0
+            signal_df.iloc[-1, signal_df.columns.get_loc("signal")] = 1
+            s.generate_signals.return_value = signal_df
+            strategies[name] = s
+
+        result = _score_stock_cached("2330", strategies, 5,
+                                     price_cache, {}, {}, {}, {})
+        assert result is not None
+        assert result["stock_id"] == "2330"
+        assert result["agree_count"] == 2
+        assert result["total_score"] > 0
+
+    def test_no_price_in_cache(self):
+        """快取中無此股票 → None"""
+        result = _score_stock_cached("9999", {}, 5, {}, {}, {}, {}, {})
+        assert result is None
+
+    def test_low_volume_filtered(self):
+        """volume < 500 張 → None"""
+        df = _make_price_df("9999", 50, 100_000)  # 100 張
+        df["close"] = 100
+        result = _score_stock_cached("9999", {}, 5,
+                                     {"9999": df}, {}, {}, {}, {})
+        assert result is None
+
+    def test_no_db_calls_during_scoring(self):
+        """整個評分流程不呼叫任何 DB 函式"""
+        df = _make_price_df("2330", 50, 10_000_000)
+        s = MagicMock()
+        signal_df = df.copy()
+        signal_df["signal"] = 0
+        s.generate_signals.return_value = signal_df
+
+        with patch("scripts.daily_stock_picker.safe_read_sql") as mock_sql, \
+             patch("scripts.daily_stock_picker._load_table") as mock_load:
+            _score_stock_cached("2330", {"RSI 反轉": s}, 5,
+                                {"2330": df}, {}, {}, {}, {})
+            mock_sql.assert_not_called()
+            mock_load.assert_not_called()
+
+
+# ============================================================================
+# TestEnrichFromCache（快取資料合併）
+# ============================================================================
+
+class TestEnrichFromCache:
+    """從快取合併資料"""
+
+    def test_chip_institutional_merge(self):
+        """chip_institutional merge 正確，含 institutional_net_buy"""
+        dates = pd.date_range("2023-01-01", periods=5, freq="B")
+        df = pd.DataFrame({"date": dates, "close": [100] * 5, "volume": [1000] * 5})
+        chip_df = pd.DataFrame({
+            "date": dates, "stock_id": "2330",
+            "Foreign_Investor_buy": [100, 200, 300, 400, 500],
+            "Foreign_Investor_sell": [50, 100, 150, 200, 250],
+        })
+        chip_cache = {"2330": chip_df}
+        enriched = _enrich_from_cache(df, "2330", "法人跟單", chip_cache, {}, {}, {})
+        assert "institutional_net_buy" in enriched.columns
+        assert len(enriched) == 5
+
+    def test_stock_per_merge_asof(self):
+        """stock_per 用 merge_asof 前向填充"""
+        dates = pd.date_range("2023-01-01", periods=10, freq="B")
+        df = pd.DataFrame({"date": dates, "close": [100] * 10, "volume": [1000] * 10})
+        # PER 只有 2 筆月度資料
+        per_df = pd.DataFrame({
+            "date": [dates[0], dates[5]],
+            "stock_id": ["2330", "2330"],
+            "per": [15.0, 16.0],
+        })
+        per_cache = {"2330": per_df}
+        enriched = _enrich_from_cache(df, "2330", "價值投資", {}, per_cache, {}, {})
+        assert "per" in enriched.columns
+        assert not enriched["per"].isna().all()
+
+    def test_missing_stock_in_cache(self):
+        """快取中無此股票 → 回傳原始 df，不報錯"""
+        dates = pd.date_range("2023-01-01", periods=5, freq="B")
+        df = pd.DataFrame({"date": dates, "close": [100] * 5, "volume": [1000] * 5})
+        enriched = _enrich_from_cache(df, "9999", "法人跟單", {}, {}, {}, {})
+        assert len(enriched) == len(df)
+
+
+# ============================================================================
+# TestLoadNameMap（批量名稱載入）
+# ============================================================================
+
+class TestLoadNameMap:
+    """批量載入股票名稱"""
+
+    @patch("scripts.daily_stock_picker.safe_read_sql")
+    def test_returns_dict(self, mock_sql):
+        """批量載入股票名稱回傳 dict"""
+        mock_sql.return_value = pd.DataFrame({
+            "stock_id": ["2330", "2317"],
+            "name": ["台積電", "鴻海"],
+        })
+        name_map = _load_name_map()
+        assert name_map["2330"] == "台積電"
+        assert name_map.get("9999") is None
+
+
+# ============================================================================
+# TestScanStocksAndBuildReport（選取 / 報告分離）
+# ============================================================================
+
+class TestScanStocks:
+    """scan_stocks() 回傳結構正確性"""
+
+    @patch("scripts.daily_stock_picker.load_industry_map", return_value={})
+    @patch("scripts.daily_stock_picker._load_name_map", return_value={"2330": "台積電"})
+    @patch("scripts.daily_stock_picker._load_all_tables")
+    @patch("scripts.daily_stock_picker.load_all_stock_ids", return_value=["2330"])
+    @patch("scripts.daily_stock_picker.get_engine")
+    def test_returns_expected_keys(self, mock_engine, mock_ids, mock_tables,
+                                   mock_names, mock_ind):
+        """scan_stocks 回傳的 dict 包含所有必要 key"""
+        df = _make_price_df("2330", 50, 10_000_000)
+        mock_tables.return_value = {
+            "daily_price": df,
+            "chip_institutional": pd.DataFrame(),
+            "stock_per": pd.DataFrame(),
+            "month_revenue": pd.DataFrame(),
+        }
+        # mock STRATEGY_MAP 避免真正跑策略
+        with patch("scripts.daily_stock_picker.STRATEGY_MAP", {}), \
+             patch("scripts.daily_stock_picker.STRATEGY_WEIGHTS", {}):
+            result = scan_stocks(top_n=5, target_date="2023-03-01")
+
+        assert result is not None
+        expected_keys = {"ranked", "all_results", "strategies_used",
+                         "total_scanned", "report_date", "ind_map", "name_map"}
+        assert set(result.keys()) == expected_keys
+        assert result["report_date"] == "2023-03-01"
+        assert result["total_scanned"] == 1
+        assert result["name_map"]["2330"] == "台積電"
+
+    @patch("scripts.daily_stock_picker.get_engine", side_effect=Exception("DB down"))
+    def test_db_failure_returns_none(self, mock_engine):
+        """DB 連線失敗 → None"""
+        result = scan_stocks(target_date="2023-03-01")
+        assert result is None
+
+
+class TestBuildReport:
+    """build_report() 報告產出正確性"""
+
+    def test_produces_report_file(self, tmp_path):
+        """build_report 寫入 .md 檔案"""
+        scan_result = {
+            "ranked": [{
+                "stock_id": "2330",
+                "total_score": 3.5,
+                "agree_count": 3,
+                "total_strategies": 3,
+                "last_close": 875.0,
+                "last_date": pd.Timestamp("2023-03-01"),
+                "week_return": 3.2,
+                "week_vol_change": 15.0,
+                "rsi": 42.3,
+                "avg_volume_20d": 35000,
+                "votes": {
+                    "RSI 反轉": {"latest_signal": 1, "recent_score": 2.0,
+                                "signal_date": pd.Timestamp("2023-02-28")},
+                },
+            }],
+            "all_results": [],
+            "strategies_used": ["RSI 反轉"],
+            "total_scanned": 100,
+            "report_date": "2023-03-01",
+            "ind_map": {},
+            "name_map": {"2330": "台積電"},
+        }
+        filepath = build_report(scan_result, output_dir=str(tmp_path))
+        assert filepath is not None
+        assert os.path.exists(filepath)
+        with open(filepath) as f:
+            content = f.read()
+        assert "# 每日選股報告" in content
+        assert "台積電" in content
+
+    def test_empty_ranked(self, tmp_path):
+        """無推薦股票仍產出報告"""
+        scan_result = {
+            "ranked": [],
+            "all_results": [],
+            "strategies_used": ["RSI 反轉"],
+            "total_scanned": 100,
+            "report_date": "2023-03-01",
+            "ind_map": {},
+            "name_map": {},
+        }
+        filepath = build_report(scan_result, output_dir=str(tmp_path))
+        assert filepath is not None
+        with open(filepath) as f:
+            content = f.read()
+        assert "無符合條件" in content

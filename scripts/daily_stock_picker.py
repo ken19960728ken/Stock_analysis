@@ -79,7 +79,209 @@ VALID_TABLES = frozenset({
 
 
 # ===================================================================
-# 資料載入
+# 批量資料載入（優化版）
+# ===================================================================
+
+def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, pd.DataFrame]:
+    """批量載入所有需要的表格，回傳 {table_name: DataFrame}"""
+    tables = {}
+
+    # daily_price — 必須
+    sql = "SELECT * FROM daily_price WHERE date >= %(sd)s"
+    params: dict = {"sd": start_date}
+    if end_date:
+        sql += " AND date <= %(ed)s"
+        params["ed"] = end_date
+    sql += " ORDER BY stock_id, date"
+    tables["daily_price"] = safe_read_sql(sql, params=params)
+
+    # chip_institutional, stock_per — 同樣日期範圍
+    for tbl in ["chip_institutional", "stock_per"]:
+        sql = f"SELECT * FROM {tbl} WHERE date >= %(sd)s"
+        p: dict = {"sd": start_date}
+        if end_date:
+            sql += " AND date <= %(ed)s"
+            p["ed"] = end_date
+        sql += " ORDER BY stock_id, date"
+        tables[tbl] = safe_read_sql(sql, params=p)
+
+    # month_revenue — 往前推 90 天（merge_asof 需要歷史月度資料前向填充）
+    rev_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=90)).strftime("%Y-%m-%d")
+    sql = "SELECT * FROM month_revenue WHERE date >= %(sd)s"
+    p = {"sd": rev_start}
+    if end_date:
+        sql += " AND date <= %(ed)s"
+        p["ed"] = end_date
+    sql += " ORDER BY stock_id, date"
+    tables["month_revenue"] = safe_read_sql(sql, params=p)
+
+    return tables
+
+
+def _build_stock_cache(df: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
+    """依 stock_id 分組，回傳 {stock_id: DataFrame}"""
+    if df is None or df.empty:
+        return {}
+    return {sid: grp.reset_index(drop=True) for sid, grp in df.groupby("stock_id", sort=False)}
+
+
+def _load_name_map() -> dict[str, str]:
+    """一次載入所有股票名稱"""
+    try:
+        df = safe_read_sql('SELECT "商品代號" AS stock_id, "商品名稱" AS name FROM twstock_code')
+        return dict(zip(df["stock_id"], df["name"]))
+    except Exception:
+        return {}
+
+
+def _enrich_from_cache(df: pd.DataFrame, stock_id: str, strategy_name: str,
+                       chip_cache: dict, per_cache: dict, rev_cache: dict,
+                       ind_map: dict) -> pd.DataFrame:
+    """從快取取補充資料並合併（不查 DB）"""
+    needs = STRATEGY_DATA_NEEDS.get(strategy_name, [])
+    if not needs:
+        return df
+
+    df = df.sort_values("date").copy()
+
+    # 次產業輪動策略需要 sub_industry 欄位
+    if strategy_name == "次產業輪動":
+        ind_info = ind_map.get(stock_id, {})
+        df["sub_industry"] = ind_info.get("sub_industry")
+
+    for table in needs:
+        if table == "chip_institutional":
+            extra = chip_cache.get(stock_id, pd.DataFrame())
+        elif table == "stock_per":
+            extra = per_cache.get(stock_id, pd.DataFrame())
+        elif table == "month_revenue":
+            extra = rev_cache.get(stock_id, pd.DataFrame())
+        else:
+            continue
+
+        if extra.empty:
+            continue
+
+        if table == "chip_institutional":
+            extra = extra.copy()
+            buy_cols = [c for c in extra.columns if c.endswith("_buy")]
+            sell_cols = [c for c in extra.columns if c.endswith("_sell")]
+            if buy_cols and sell_cols:
+                extra["institutional_net_buy"] = (
+                    extra[buy_cols].sum(axis=1) - extra[sell_cols].sum(axis=1)
+                )
+            keep_set = {"date", "institutional_net_buy"}
+            for c in extra.columns:
+                if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
+                    keep_set.add(c)
+            extra = extra[[c for c in extra.columns if c in keep_set]]
+            df = df.merge(extra, on="date", how="left")
+
+        elif table == "stock_per":
+            extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "month_revenue":
+            extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+    return df
+
+
+def _score_stock_cached(stock_id: str, strategies: dict, signal_days: int,
+                        price_cache: dict, chip_cache: dict, per_cache: dict,
+                        rev_cache: dict, ind_map: dict,
+                        end_date: str | None = None) -> dict | None:
+    """從快取評分單支股票（不查 DB）"""
+    df = price_cache.get(stock_id)
+    if df is None or df.empty or len(df) < 20:
+        return None
+
+    # 確保 date 欄位為 datetime
+    if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["date"]):
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"])
+
+    # 流動性過濾：近 20 日均量 > MIN_AVG_VOLUME 張
+    recent_vol = df["volume"].tail(20).mean()
+    if recent_vol < MIN_AVG_VOLUME * 1000:
+        return None
+
+    last_close = df["close"].iloc[-1]
+    last_date = df["date"].iloc[-1]
+
+    votes = {}
+    for strategy_name, strategy in strategies.items():
+        try:
+            enriched = _enrich_from_cache(
+                df.copy(), stock_id, strategy_name,
+                chip_cache, per_cache, rev_cache, ind_map,
+            )
+            result = strategy.generate_signals(enriched)
+
+            recent_signals = result["signal"].tail(signal_days)
+            recent_score = recent_signals.sum()
+            latest_signal = result["signal"].iloc[-1]
+
+            nonzero = result[result["signal"] != 0]
+            signal_date = nonzero["date"].iloc[-1] if not nonzero.empty and "date" in nonzero.columns else None
+
+            votes[strategy_name] = {
+                "latest_signal": int(latest_signal),
+                "recent_score": float(recent_score),
+                "signal_date": signal_date,
+            }
+        except Exception as e:
+            logger.debug(f"  {stock_id}/{strategy_name} 評分失敗: {e}")
+            votes[strategy_name] = {
+                "latest_signal": 0,
+                "recent_score": 0.0,
+                "signal_date": None,
+            }
+
+    # 加權投票
+    total_score = sum(
+        v["recent_score"] * STRATEGY_WEIGHTS.get(name, 0.5)
+        for name, v in votes.items()
+    )
+    agree_count = sum(1 for v in votes.values() if v["recent_score"] > 0)
+
+    # 過去 5 日表現
+    if len(df) >= 5:
+        week_return = (df["close"].iloc[-1] / df["close"].iloc[-5] - 1) * 100
+        week_vol_change = (
+            df["volume"].tail(5).mean() / df["volume"].tail(20).mean() - 1
+        ) * 100 if df["volume"].tail(20).mean() > 0 else 0
+    else:
+        week_return = 0
+        week_vol_change = 0
+
+    # RSI 計算
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = (100 - (100 / (1 + rs))).iloc[-1] if len(df) >= 14 else None
+
+    return {
+        "stock_id": stock_id,
+        "total_score": total_score,
+        "agree_count": agree_count,
+        "total_strategies": len(strategies),
+        "votes": votes,
+        "last_close": last_close,
+        "last_date": last_date,
+        "week_return": week_return,
+        "week_vol_change": week_vol_change,
+        "rsi": rsi,
+        "avg_volume_20d": recent_vol / 1000,
+    }
+
+
+# ===================================================================
+# 資料載入（舊版，保留向後相容）
 # ===================================================================
 
 def _load_table(engine, table: str, stock_id: str, start_date: str,
@@ -327,10 +529,11 @@ def filter_and_rank(results: list[dict], top_n: int,
 # 報告生成
 # ===================================================================
 
-def generate_report(ranked: list[dict], engine, strategies_used: list[str],
-                    total_scanned: int, report_date: str,
+def generate_report(ranked: list[dict], engine=None, strategies_used: list[str] = None,
+                    total_scanned: int = 0, report_date: str = "",
                     industry_map: dict | None = None,
-                    peer_data: dict | None = None) -> str:
+                    peer_data: dict | None = None,
+                    name_map: dict | None = None) -> str:
     """生成 Markdown 報告"""
     lines = []
     lines.append(f"# 每日選股報告 — {report_date}\n")
@@ -346,7 +549,12 @@ def generate_report(ranked: list[dict], engine, strategies_used: list[str],
     else:
         lines.append("## 推薦清單\n")
         for i, r in enumerate(ranked, 1):
-            stock_name = load_stock_name(engine, r["stock_id"])
+            if name_map:
+                stock_name = name_map.get(r["stock_id"], r["stock_id"])
+            elif engine is not None:
+                stock_name = load_stock_name(engine, r["stock_id"])
+            else:
+                stock_name = r["stock_id"]
             lines.append(
                 f"### {i}. {r['stock_id']} {stock_name} — "
                 f"總分 {r['total_score']:.1f} "
@@ -445,13 +653,13 @@ def generate_report(ranked: list[dict], engine, strategies_used: list[str],
 
 
 # ===================================================================
-# 主流程
+# 主流程 — 選取資料
 # ===================================================================
 
-def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL_DAYS,
-                   output_dir: str | None = None, target_date: str | None = None) -> str | None:
+def scan_stocks(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL_DAYS,
+                target_date: str | None = None) -> dict | None:
     """
-    執行每日選股流程，回傳報告檔案路徑。
+    執行選股掃描：載入資料 → 評分 → 排名，回傳結果 dict。
 
     Parameters
     ----------
@@ -459,15 +667,14 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
         選出 Top N 股票
     signal_days : int
         考慮最近 N 天的訊號
-    output_dir : str | None
-        報告輸出目錄，None 則用預設 reports/
     target_date : str | None
         指定報告日期（格式 YYYY-MM-DD），None 則自動取 DB 中最新資料日期
 
     Returns
     -------
-    str | None
-        報告檔案路徑，失敗則 None
+    dict | None
+        包含 ranked、strategies_used、total_scanned、report_date、
+        ind_map、name_map 的結果 dict，失敗則 None
     """
     # 連線 DB
     try:
@@ -481,7 +688,6 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
     if target_date:
         report_date = target_date
     else:
-        # 自動取 DB 中最新資料日期
         try:
             with engine.connect() as conn:
                 max_date = conn.execute(
@@ -492,11 +698,10 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
             report_date = datetime.now().strftime("%Y-%m-%d")
 
     start_date = (datetime.strptime(report_date, "%Y-%m-%d") - timedelta(days=LOOKBACK_TRADE_DAYS * 2)).strftime("%Y-%m-%d")
-    # 一律限制資料上限為 report_date，避免 look-ahead bias
     end_date = report_date
 
     print(f"\n{'='*60}")
-    print(f"每日選股報告 — {report_date}")
+    print(f"每日選股掃描 — {report_date}")
     print(f"{'='*60}\n")
 
     # 初始化策略
@@ -518,14 +723,39 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
     print(f"掃描標的: {len(stock_ids)} 支")
     print(f"考慮最近 {signal_days} 天訊號，選出 Top {top_n}\n")
 
-    # 逐支評分
+    # === 批量預載（~5 次 DB 查詢） ===
+    logger.info("批量載入資料...")
+    print("  批量載入資料...")
+    all_tables = _load_all_tables(start_date, end_date)
+    price_cache = _build_stock_cache(all_tables.get("daily_price"))
+    chip_cache = _build_stock_cache(all_tables.get("chip_institutional"))
+    per_cache = _build_stock_cache(all_tables.get("stock_per"))
+    rev_cache = _build_stock_cache(all_tables.get("month_revenue"))
+    del all_tables  # 釋放原始 DataFrame 記憶體
+
+    name_map = _load_name_map()
+
+    logger.info(
+        f"預載完成: daily_price={len(price_cache)} 支, "
+        f"chip={len(chip_cache)}, per={len(per_cache)}, rev={len(rev_cache)}"
+    )
+    print(f"  預載完成: {len(price_cache)} 支價格資料\n")
+
+    # 載入產業分類
+    ind_map = load_industry_map()
+
+    # === 逐支評分（純記憶體運算，不查 DB） ===
     results = []
     total = len(stock_ids)
     for i, sid in enumerate(stock_ids):
         if (i + 1) % 100 == 0 or i == 0:
             print(f"  掃描進度: {i+1}/{total} ({(i+1)/total*100:.0f}%)")
 
-        result = score_stock(engine, sid, strategies, start_date, signal_days, end_date)
+        result = _score_stock_cached(
+            sid, strategies, signal_days,
+            price_cache, chip_cache, per_cache, rev_cache,
+            ind_map, end_date,
+        )
         if result is not None:
             results.append(result)
 
@@ -535,8 +765,44 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
     ranked = filter_and_rank(results, top_n)
     print(f"最終推薦: {len(ranked)} 支\n")
 
-    # 載入產業分類
-    ind_map = load_industry_map()
+    return {
+        "ranked": ranked,
+        "all_results": results,
+        "strategies_used": strategies_used,
+        "total_scanned": len(stock_ids),
+        "report_date": report_date,
+        "ind_map": ind_map,
+        "name_map": name_map,
+    }
+
+
+# ===================================================================
+# 主流程 — 產出報告
+# ===================================================================
+
+def build_report(scan_result: dict, output_dir: str | None = None) -> str | None:
+    """
+    根據 scan_stocks() 的結果產出 Markdown 報告並寫入檔案。
+
+    Parameters
+    ----------
+    scan_result : dict
+        scan_stocks() 回傳的結果 dict
+    output_dir : str | None
+        報告輸出目錄，None 則用預設 reports/
+
+    Returns
+    -------
+    str | None
+        報告檔案路徑，失敗則 None
+    """
+    ranked = scan_result["ranked"]
+    strategies_used = scan_result["strategies_used"]
+    total_scanned = scan_result["total_scanned"]
+    report_date = scan_result["report_date"]
+    ind_map = scan_result.get("ind_map", {})
+    name_map = scan_result.get("name_map", {})
+
     if ind_map:
         print(f"產業分類: {len(ind_map)} 筆")
 
@@ -576,8 +842,10 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
             logger.debug(f"同業排名計算失敗: {e}")
 
     # 生成報告
-    report = generate_report(ranked, engine, strategies_used, len(stock_ids), report_date,
-                             industry_map=ind_map, peer_data=peer_data)
+    report = generate_report(ranked, strategies_used=strategies_used,
+                             total_scanned=total_scanned, report_date=report_date,
+                             industry_map=ind_map, peer_data=peer_data,
+                             name_map=name_map)
 
     # 寫入檔案
     if output_dir is None:
@@ -596,7 +864,7 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
         print(f"Top {min(5, len(ranked))} 推薦:")
         print(f"{'='*60}")
         for i, r in enumerate(ranked[:5], 1):
-            name = load_stock_name(engine, r["stock_id"])
+            name = name_map.get(r["stock_id"], r["stock_id"])
             print(
                 f"  {i}. {r['stock_id']} {name} — "
                 f"分數 {r['total_score']:.1f}, "
@@ -605,6 +873,23 @@ def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL
             )
 
     return filepath
+
+
+# ===================================================================
+# 便利函式（向後相容）
+# ===================================================================
+
+def run_daily_pick(top_n: int = DEFAULT_TOP_N, signal_days: int = DEFAULT_SIGNAL_DAYS,
+                   output_dir: str | None = None, target_date: str | None = None) -> str | None:
+    """
+    執行每日選股流程（掃描 + 報告），回傳報告檔案路徑。
+
+    等同於 scan_stocks() → build_report() 的串接。
+    """
+    scan_result = scan_stocks(top_n=top_n, signal_days=signal_days, target_date=target_date)
+    if scan_result is None:
+        return None
+    return build_report(scan_result, output_dir=output_dir)
 
 
 def main():
