@@ -52,6 +52,18 @@ m_weight = st.sidebar.slider("營收動能權重", 0.0, 1.0, 0.5, 0.1)
 f_weight = 1.0 - m_weight
 st.sidebar.caption(f"法人流向權重: {f_weight:.1f}")
 
+# 衰減加權設定
+st.sidebar.markdown("---")
+enable_decay = st.sidebar.checkbox("啟用衰減加權", value=False,
+                                    help="啟用後近期資料權重更高，遠期資料權重指數衰減")
+momentum_decay_hl: int | None = None
+flow_decay_hl: int | None = None
+if enable_decay:
+    momentum_decay_hl = st.sidebar.slider("營收衰減半衰期（月）", 1, 6, 2,
+                                           help="半衰期越短，近期營收的影響力越大")
+    flow_decay_hl = st.sidebar.slider("法人衰減半衰期（天）", 3, 30, 7,
+                                       help="半衰期越短，近期法人動向影響力越大")
+
 rotation_periods = st.sidebar.slider("輪動歷史月數", 3, 24, 12)
 
 run_btn = st.sidebar.button("執行分析", type="primary", use_container_width=True)
@@ -84,6 +96,8 @@ if run_btn:
         "f_weight": f_weight,
         "rotation_periods": rotation_periods,
         "level": level,
+        "momentum_decay_hl": momentum_decay_hl,
+        "flow_decay_hl": flow_decay_hl,
     }
 
 if "sr_industry_map" not in st.session_state:
@@ -105,9 +119,11 @@ tab1, tab2, tab3, tab4 = st.tabs(["📊 產業排名", "🗺️ 輪動熱力圖"
 # ===== Tab 1: 產業排名 =====
 with tab1:
     momentum = calc_industry_momentum(revenue_df, industry_map,
-                                       params["lookback_months"], level=level)
+                                       params["lookback_months"], level=level,
+                                       decay_half_life=params.get("momentum_decay_hl"))
     flow = calc_industry_flow(chip_df, industry_map,
-                              params["lookback_days"], level=level)
+                              params["lookback_days"], level=level,
+                              decay_half_life=params.get("flow_decay_hl"))
     composite = industry_composite_score(momentum, flow, params["m_weight"], params["f_weight"])
 
     if composite.empty:

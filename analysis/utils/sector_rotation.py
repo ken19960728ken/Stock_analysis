@@ -27,6 +27,7 @@ def calc_industry_momentum(
     industry_map: pd.DataFrame,
     lookback_months: int = 3,
     level: str = "sector",
+    decay_half_life: int | None = None,
 ) -> pd.DataFrame:
     """
     計算產業營收動能
@@ -36,6 +37,7 @@ def calc_industry_momentum(
         industry_map: (stock_id, industry_category/sector/sub_industry)
         lookback_months: 回溯月數
         level: "sector" 或 "sub_industry"
+        decay_half_life: 時間衰減半衰期（月），None 表示不衰減（向後相容）
 
     Returns:
         DataFrame[industry, avg_yoy, median_yoy, positive_ratio, momentum_score, rank]
@@ -68,13 +70,30 @@ def calc_industry_momentum(
     yoy_col = "month_revenue_year_on_year"
     df[yoy_col] = pd.to_numeric(df[yoy_col], errors="coerce")
 
-    # 按產業彙總
-    result = df.groupby(group_col).agg(
-        avg_yoy=(yoy_col, "mean"),
-        median_yoy=(yoy_col, "median"),
-        positive_ratio=(yoy_col, lambda x: (x > 0).mean()),
-        stock_count=("stock_id", "nunique"),
-    ).reset_index()
+    # 指數衰減加權：近期月份權重更高
+    if decay_half_life is not None and decay_half_life > 0:
+        decay_rate = np.log(2) / decay_half_life
+        months_ago = (latest_date - df["date"]).dt.days / 30.0
+        df["_time_weight"] = np.exp(-decay_rate * months_ago)
+
+        def weighted_mean(x):
+            w = df.loc[x.index, "_time_weight"]
+            return np.average(x, weights=w) if w.sum() > 0 else np.nan
+
+        result = df.groupby(group_col).agg(
+            avg_yoy=(yoy_col, weighted_mean),
+            median_yoy=(yoy_col, "median"),
+            positive_ratio=(yoy_col, lambda x: (x > 0).mean()),
+            stock_count=("stock_id", "nunique"),
+        ).reset_index()
+    else:
+        # 按產業彙總（原始簡單平均）
+        result = df.groupby(group_col).agg(
+            avg_yoy=(yoy_col, "mean"),
+            median_yoy=(yoy_col, "median"),
+            positive_ratio=(yoy_col, lambda x: (x > 0).mean()),
+            stock_count=("stock_id", "nunique"),
+        ).reset_index()
 
     result.rename(columns={group_col: "industry"}, inplace=True)
 
@@ -99,6 +118,7 @@ def calc_industry_flow(
     industry_map: pd.DataFrame,
     lookback_days: int = 20,
     level: str = "sector",
+    decay_half_life: int | None = None,
 ) -> pd.DataFrame:
     """
     計算產業法人資金流向
@@ -108,6 +128,7 @@ def calc_industry_flow(
         industry_map: (stock_id, industry_category/sector/sub_industry)
         lookback_days: 回溯天數
         level: "sector" 或 "sub_industry"
+        decay_half_life: 時間衰減半衰期（天），None 表示不衰減（向後相容）
 
     Returns:
         DataFrame[industry, total_net_buy, avg_net_buy, flow_score, rank]
@@ -139,11 +160,24 @@ def calc_industry_flow(
     elif "net_buy" not in df.columns:
         return pd.DataFrame()
 
-    result = df.groupby(group_col).agg(
-        total_net_buy=("net_buy", "sum"),
-        avg_net_buy=("net_buy", "mean"),
-        stock_count=("stock_id", "nunique"),
-    ).reset_index()
+    # 指數衰減加權：近期法人動向權重更高
+    if decay_half_life is not None and decay_half_life > 0:
+        decay_rate = np.log(2) / decay_half_life
+        days_ago = (latest_date - df["date"]).dt.days.astype(float)
+        df["_time_weight"] = np.exp(-decay_rate * days_ago)
+        df["_weighted_net_buy"] = df["net_buy"] * df["_time_weight"]
+
+        result = df.groupby(group_col).agg(
+            total_net_buy=("_weighted_net_buy", "sum"),
+            avg_net_buy=("_weighted_net_buy", "mean"),
+            stock_count=("stock_id", "nunique"),
+        ).reset_index()
+    else:
+        result = df.groupby(group_col).agg(
+            total_net_buy=("net_buy", "sum"),
+            avg_net_buy=("net_buy", "mean"),
+            stock_count=("stock_id", "nunique"),
+        ).reset_index()
 
     result.rename(columns={group_col: "industry"}, inplace=True)
 
@@ -160,13 +194,25 @@ def industry_composite_score(
     flow: pd.DataFrame,
     m_weight: float = 0.5,
     f_weight: float = 0.5,
+    dynamic_weights: dict | None = None,
 ) -> pd.DataFrame:
     """
     合成產業綜合得分
 
+    Parameters:
+        momentum: 營收動能 DataFrame
+        flow: 法人流向 DataFrame
+        m_weight: 營收動能靜態權重（預設 0.5）
+        f_weight: 法人流向靜態權重（預設 0.5）
+        dynamic_weights: 可選的動態權重 dict，如 {"momentum": 0.6, "flow": 0.4}，
+                         傳入時覆蓋 m_weight / f_weight
+
     Returns:
         DataFrame[industry, momentum_rank, flow_rank, composite_score, final_rank]
     """
+    if dynamic_weights:
+        m_weight = dynamic_weights.get("momentum", m_weight)
+        f_weight = dynamic_weights.get("flow", f_weight)
     if momentum.empty and flow.empty:
         return pd.DataFrame()
 

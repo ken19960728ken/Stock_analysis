@@ -126,6 +126,99 @@ class TestIndustryCompositeScore:
         assert result.empty
 
 
+class TestDecayWeighting:
+    """衰減加權相關測試"""
+
+    def test_momentum_decay_recent_higher_weight(self, sample_revenue_df, sample_industry_map):
+        """啟用衰減後，近期 YoY 的權重應高於遠期"""
+        result_no_decay = calc_industry_momentum(
+            sample_revenue_df, sample_industry_map, decay_half_life=None
+        )
+        result_with_decay = calc_industry_momentum(
+            sample_revenue_df, sample_industry_map, decay_half_life=1
+        )
+        # 兩者應都有結果且結構相同
+        assert not result_no_decay.empty
+        assert not result_with_decay.empty
+        assert set(result_no_decay.columns) == set(result_with_decay.columns)
+
+    def test_momentum_decay_none_backward_compatible(self, sample_revenue_df, sample_industry_map):
+        """decay_half_life=None 應與原始行為一致"""
+        result_default = calc_industry_momentum(sample_revenue_df, sample_industry_map)
+        result_none = calc_industry_momentum(
+            sample_revenue_df, sample_industry_map, decay_half_life=None
+        )
+        pd.testing.assert_frame_equal(result_default, result_none)
+
+    def test_flow_decay_recent_higher_weight(self, sample_chip_df, sample_industry_map):
+        """法人流向啟用衰減後應正常回傳"""
+        result_no_decay = calc_industry_flow(
+            sample_chip_df, sample_industry_map, decay_half_life=None
+        )
+        result_with_decay = calc_industry_flow(
+            sample_chip_df, sample_industry_map, decay_half_life=5
+        )
+        assert not result_no_decay.empty
+        assert not result_with_decay.empty
+        assert set(result_no_decay.columns) == set(result_with_decay.columns)
+
+    def test_flow_decay_none_backward_compatible(self, sample_chip_df, sample_industry_map):
+        """flow decay_half_life=None 應與原始行為一致"""
+        result_default = calc_industry_flow(sample_chip_df, sample_industry_map)
+        result_none = calc_industry_flow(
+            sample_chip_df, sample_industry_map, decay_half_life=None
+        )
+        pd.testing.assert_frame_equal(result_default, result_none)
+
+    def test_momentum_decay_different_half_lives(self, sample_revenue_df, sample_industry_map):
+        """不同半衰期應產生不同結果"""
+        result_short = calc_industry_momentum(
+            sample_revenue_df, sample_industry_map, decay_half_life=1
+        )
+        result_long = calc_industry_momentum(
+            sample_revenue_df, sample_industry_map, decay_half_life=6
+        )
+        # 不同半衰期的 avg_yoy 不應完全相同
+        assert not result_short.empty and not result_long.empty
+
+
+class TestDynamicWeights:
+    """ICIR 動態權重測試"""
+
+    def test_dynamic_weights_override(self, sample_revenue_df, sample_chip_df, sample_industry_map):
+        """dynamic_weights 應覆蓋靜態 m_weight/f_weight"""
+        momentum = calc_industry_momentum(sample_revenue_df, sample_industry_map)
+        flow = calc_industry_flow(sample_chip_df, sample_industry_map)
+
+        result_static = industry_composite_score(momentum, flow, m_weight=0.5, f_weight=0.5)
+        result_dynamic = industry_composite_score(
+            momentum, flow, m_weight=0.5, f_weight=0.5,
+            dynamic_weights={"momentum": 0.8, "flow": 0.2}
+        )
+        # 動態權重大幅偏向 momentum，分數應不同
+        assert not result_static.empty
+        assert not result_dynamic.empty
+
+    def test_dynamic_weights_none_no_effect(self, sample_revenue_df, sample_chip_df, sample_industry_map):
+        """dynamic_weights=None 不應改變結果"""
+        momentum = calc_industry_momentum(sample_revenue_df, sample_industry_map)
+        flow = calc_industry_flow(sample_chip_df, sample_industry_map)
+
+        result_default = industry_composite_score(momentum, flow)
+        result_none = industry_composite_score(momentum, flow, dynamic_weights=None)
+        pd.testing.assert_frame_equal(result_default, result_none)
+
+    def test_dynamic_weights_partial(self, sample_revenue_df, sample_chip_df, sample_industry_map):
+        """只提供部分 key 時，另一個用預設值"""
+        momentum = calc_industry_momentum(sample_revenue_df, sample_industry_map)
+        flow = calc_industry_flow(sample_chip_df, sample_industry_map)
+
+        result = industry_composite_score(
+            momentum, flow, dynamic_weights={"momentum": 0.7}
+        )
+        assert not result.empty
+
+
 class TestIndustryRotationHistory:
     def test_output_shape(self, sample_revenue_df, sample_chip_df, sample_industry_map):
         result = industry_rotation_history(

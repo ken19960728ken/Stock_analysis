@@ -111,6 +111,50 @@ class TestCalcChainMomentum:
         assert result.empty
 
 
+class TestSupplyChainExpansion:
+    """新增供應鏈覆蓋測試"""
+
+    def test_total_chain_count(self):
+        """應有 13 條供應鏈"""
+        assert len(SUPPLY_CHAIN) >= 13
+
+    def test_new_chains_exist(self):
+        """新增的 9 條供應鏈應存在"""
+        expected_new = [
+            "消費電子供應鏈", "汽車供應鏈", "化學工業供應鏈",
+            "生技醫療供應鏈", "鋼鐵供應鏈", "食品供應鏈",
+            "航運供應鏈", "建築供應鏈", "紡織供應鏈",
+        ]
+        for name in expected_new:
+            assert name in SUPPLY_CHAIN, f"缺少供應鏈：{name}"
+
+    def test_all_sub_industries_match_json(self):
+        """所有供應鏈中的次產業名稱需與 sub_industry_mapping.json 一致"""
+        import json
+        from pathlib import Path
+
+        json_path = Path(__file__).resolve().parents[1] / "data" / "sub_industry_mapping.json"
+        with open(json_path, encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        # 收集 JSON 中所有次產業名稱
+        all_sub_industries = set()
+        for sector_data in mapping.values():
+            all_sub_industries.update(sector_data.keys())
+
+        # 檢查每條供應鏈
+        for chain_name, stages in SUPPLY_CHAIN.items():
+            for stage in stages:
+                assert stage in all_sub_industries, (
+                    f"供應鏈「{chain_name}」中的「{stage}」在 JSON 中不存在"
+                )
+
+    def test_each_chain_has_at_least_2_stages(self):
+        """每條供應鏈至少要有 2 個環節"""
+        for name, stages in SUPPLY_CHAIN.items():
+            assert len(stages) >= 2, f"供應鏈「{name}」只有 {len(stages)} 個環節"
+
+
 class TestCalcChainLeadLag:
     def test_basic(self, revenue_df, industry_map):
         result = calc_chain_lead_lag("半導體供應鏈", revenue_df, industry_map, periods=12)
