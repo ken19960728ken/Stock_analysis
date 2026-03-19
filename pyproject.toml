@@ -30,6 +30,7 @@ pipeline = [
 analysis = [
     "streamlit>=1.30.0",
     "fredapi>=0.5.0",
+    "networkx>=3.0",
 ]
 dashboard = [
     "fastapi>=0.110.0",
