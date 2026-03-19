@@ -189,12 +189,115 @@ def calc_industry_flow(
                     "stock_count", "flow_score", "rank"]]
 
 
+def calc_industry_valuation(
+    per_df: pd.DataFrame,
+    industry_map: pd.DataFrame,
+    level: str = "sector",
+    method: str = "percentile",
+) -> pd.DataFrame:
+    """
+    計算各產業估值得分
+
+    Args:
+        per_df: 全市場 PER/PBR/殖利率 (stock_id, date, per, pbr, dividend_yield)
+        industry_map: (stock_id, industry_category/sector/sub_industry)
+        level: "sector" 或 "sub_industry"
+        method: "percentile"（百分位排名）或 "zscore"（z-score 標準化後 min-max 正規化）
+
+    Returns:
+        DataFrame[industry, avg_per, avg_pbr, avg_dy,
+                  per_score, pbr_score, dy_score, valuation_score, rank]
+    """
+    if per_df.empty or industry_map.empty:
+        return pd.DataFrame()
+
+    group_col = _resolve_group_col(industry_map, level)
+
+    # 取每支股票最新一筆 PER/PBR/DY
+    df = per_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").groupby("stock_id").last().reset_index()
+
+    # 合併產業分類
+    df = df.merge(industry_map, on="stock_id", how="inner")
+    if df.empty:
+        return pd.DataFrame()
+
+    if level == "sub_industry" and group_col == "sub_industry":
+        df = df.dropna(subset=[group_col])
+        if df.empty:
+            return pd.DataFrame()
+
+    # 數值轉換
+    for col in ["per", "pbr", "dividend_yield"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # 排除 PER 為負值或 NaN
+    df = df[df["per"].notna() & (df["per"] > 0)]
+    if df.empty:
+        return pd.DataFrame()
+
+    # 按產業彙總（中位數）
+    result = df.groupby(group_col).agg(
+        avg_per=("per", "median"),
+        avg_pbr=("pbr", "median"),
+        avg_dy=("dividend_yield", "median"),
+        stock_count=("stock_id", "nunique"),
+    ).reset_index()
+
+    # 產業內有效股票 < 3 的排除
+    result = result[result["stock_count"] >= 3]
+    if result.empty:
+        return pd.DataFrame()
+
+    result.rename(columns={group_col: "industry"}, inplace=True)
+
+    if method == "zscore":
+        # z-score 標準化後 min-max 正規化到 [0, 1]
+        for col, reverse in [("avg_per", True), ("avg_pbr", True), ("avg_dy", False)]:
+            score_col = col.replace("avg_", "") + "_score"
+            if col in result.columns and result[col].std() > 0:
+                z = (result[col] - result[col].mean()) / result[col].std()
+                if reverse:
+                    z = -z
+                z_min, z_max = z.min(), z.max()
+                result[score_col] = (z - z_min) / (z_max - z_min) if z_max > z_min else 0.5
+            else:
+                result[score_col] = 0.5
+    else:
+        # 百分位模式（預設）
+        n = len(result)
+        for col, reverse in [("avg_per", True), ("avg_pbr", True), ("avg_dy", False)]:
+            score_col = col.replace("avg_", "") + "_score"
+            if col in result.columns:
+                pct = result[col].rank() / n
+                result[score_col] = (1 - pct) if reverse else pct
+            else:
+                result[score_col] = 0.5
+
+    # 估值得分
+    result["valuation_score"] = (
+        result["per_score"] * 0.5 +
+        result["pbr_score"] * 0.3 +
+        result["dy_score"] * 0.2
+    )
+    result["rank"] = result["valuation_score"].rank(ascending=False).astype(int)
+    result = result.sort_values("rank")
+
+    return result[["industry", "avg_per", "avg_pbr", "avg_dy",
+                    "per_score", "pbr_score", "dy_score",
+                    "valuation_score", "rank"]]
+
+
 def industry_composite_score(
     momentum: pd.DataFrame,
     flow: pd.DataFrame,
     m_weight: float = 0.5,
     f_weight: float = 0.5,
     dynamic_weights: dict | None = None,
+    valuation: pd.DataFrame | None = None,
+    v_weight: float = 0.0,
 ) -> pd.DataFrame:
     """
     合成產業綜合得分
@@ -205,7 +308,10 @@ def industry_composite_score(
         m_weight: 營收動能靜態權重（預設 0.5）
         f_weight: 法人流向靜態權重（預設 0.5）
         dynamic_weights: 可選的動態權重 dict，如 {"momentum": 0.6, "flow": 0.4}，
-                         傳入時覆蓋 m_weight / f_weight
+                         傳入時覆蓋 m_weight / f_weight。
+                         三因子時支援 {"momentum": 0.4, "flow": 0.3, "valuation": 0.3}
+        valuation: 估值維度 DataFrame（calc_industry_valuation 回傳值），None 時退化為二因子
+        v_weight: 估值靜態權重（預設 0.0，不啟用）
 
     Returns:
         DataFrame[industry, momentum_rank, flow_rank, composite_score, final_rank]
@@ -213,6 +319,7 @@ def industry_composite_score(
     if dynamic_weights:
         m_weight = dynamic_weights.get("momentum", m_weight)
         f_weight = dynamic_weights.get("flow", f_weight)
+        v_weight = dynamic_weights.get("valuation", v_weight)
     if momentum.empty and flow.empty:
         return pd.DataFrame()
 
@@ -246,18 +353,39 @@ def industry_composite_score(
     merged["momentum_score"] = merged["momentum_score"].fillna(0)
     merged["flow_score"] = merged["flow_score"].fillna(0)
 
-    merged["composite_score"] = (
-        m_weight * merged["momentum_score"] +
-        f_weight * merged["flow_score"]
-    )
+    # 合併估值維度（三因子）
+    if valuation is not None and not valuation.empty and v_weight > 0:
+        merged = merged.merge(
+            valuation[["industry", "valuation_score", "rank"]].rename(
+                columns={"rank": "rank_valuation"}
+            ),
+            on="industry",
+            how="left",
+        )
+        merged["valuation_score"] = merged["valuation_score"].fillna(0)
+        merged["rank_valuation"] = merged["rank_valuation"].fillna(len(merged))
+        merged["composite_score"] = (
+            m_weight * merged["momentum_score"] +
+            f_weight * merged["flow_score"] +
+            v_weight * merged["valuation_score"]
+        )
+    else:
+        merged["composite_score"] = (
+            m_weight * merged["momentum_score"] +
+            f_weight * merged["flow_score"]
+        )
 
     merged["final_rank"] = merged["composite_score"].rank(ascending=False).astype(int)
     merged = merged.sort_values("final_rank")
     merged.rename(columns={"rank_momentum": "momentum_rank", "rank_flow": "flow_rank"},
                   inplace=True)
 
-    return merged[["industry", "momentum_rank", "flow_rank",
-                    "composite_score", "final_rank"]]
+    return_cols = ["industry", "momentum_rank", "flow_rank",
+                   "composite_score", "final_rank"]
+    if "valuation_score" in merged.columns:
+        return_cols.insert(3, "valuation_score")
+        return_cols.insert(4, "rank_valuation")
+    return merged[return_cols]
 
 
 def industry_rotation_history(

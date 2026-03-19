@@ -30,5 +30,8 @@ data_cache/
 # 資料庫備份
 db_backup_*/
 
+# 參考文獻 PDF（不入版控）
+analysis/documents/**/*.pdf
+
 # Claude Code
 .claude/

@@ -110,7 +110,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、產業熱力圖、估值分佈 |
 | `analysis/pages/7_策略組合.py` | 多策略組合回測（4 種權重最佳化） |
 | `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行、動態權重 |
-| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 → 產業排名 + 供應鏈分析 |
+| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 + 估值面 → 產業排名 + 供應鏈分析 |
 | `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
@@ -123,7 +123,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/portfolio_optimizer.py` | 4 種組合最佳化（Max Sharpe/Min Vol/Risk Parity/BL） |
 | `analysis/utils/factor_engine.py` | 多因子評分引擎 + 滾動 IC |
 | `analysis/utils/dynamic_weights.py` | 滾動 IC → 動態因子權重 |
-| `analysis/utils/sector_rotation.py` | 產業輪動（營收動能 + 法人流向，支援 sector/sub_industry 兩層） |
+| `analysis/utils/sector_rotation.py` | 產業輪動（營收動能 + 法人流向 + 估值面，支援 sector/sub_industry 兩層） |
 | `analysis/utils/event_study.py` | 事件研究引擎（CAR/AAR） |
 | `analysis/utils/ml_stock_picker.py` | LightGBM 選股引擎 |
 | `analysis/utils/risk.py` | VaR, CVaR, Sharpe, Sortino, Beta, 風險貢獻 |

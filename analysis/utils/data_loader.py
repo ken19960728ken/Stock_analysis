@@ -758,6 +758,24 @@ def load_earnings_dates_all(start_date: str = None) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=600)
+def load_stock_per_all(start_date: str | None = None) -> pd.DataFrame:
+    """全市場 PER/PBR/殖利率"""
+    sql = "SELECT stock_id, date, per, pbr, dividend_yield FROM stock_per"
+    params = {}
+    if start_date:
+        sql += " WHERE date >= %(start)s"
+        params["start"] = start_date
+    sql += " ORDER BY stock_id, date"
+    try:
+        df = safe_read_sql(sql, params=params)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
 def load_daily_price_all(start_date: str = None) -> pd.DataFrame:
     """全市場日K（用於事件研究等全市場分析）"""
     sql = "SELECT stock_id, date, open, high, low, close, volume FROM daily_price"

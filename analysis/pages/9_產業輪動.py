@@ -20,10 +20,12 @@ from analysis.utils.data_loader import (
     load_chip_institutional_all,
     load_industry_mapping,
     load_month_revenue_all,
+    load_stock_per_all,
 )
 from analysis.utils.sector_rotation import (
     calc_industry_flow,
     calc_industry_momentum,
+    calc_industry_valuation,
     industry_composite_score,
     industry_rotation_history,
 )
@@ -57,6 +59,30 @@ st.sidebar.markdown("---")
 enable_icir = st.sidebar.checkbox("啟用 ICIR 動態權重", value=False,
                                    help="根據歷史 IC 自動調整營收/法人權重，覆蓋上方手動設定")
 
+# 估值維度
+enable_valuation = st.sidebar.checkbox("加入估值維度", value=False,
+                                        help="加入 PER/PBR 估值評分，避免追高估值極端的產業")
+v_weight = 0.0
+valuation_method = "percentile"
+if enable_valuation:
+    v_weight = st.sidebar.slider("估值權重", 0.0, 0.5, 0.2, 0.05,
+                                  help="估值在綜合得分中的權重")
+    valuation_method = st.sidebar.radio(
+        "估值計分方式", ["percentile", "zscore"],
+        format_func=lambda x: "百分位排名" if x == "percentile" else "Z-Score 標準化",
+        help="百分位：簡單排名。Z-Score：保留分佈距離資訊（參考 SPDR Scorecard）"
+    )
+    # 自動按比例縮減營收/法人權重
+    remaining = 1.0 - v_weight
+    if (m_weight + f_weight) > 0:
+        ratio = m_weight / (m_weight + f_weight)
+        m_weight = remaining * ratio
+        f_weight = remaining - m_weight
+    else:
+        m_weight = remaining / 2
+        f_weight = remaining / 2
+    st.sidebar.caption(f"調整後：營收 {m_weight:.0%} / 法人 {f_weight:.0%} / 估值 {v_weight:.0%}")
+
 # 衰減加權設定
 enable_decay = st.sidebar.checkbox("啟用衰減加權", value=False,
                                     help="啟用後近期資料權重更高，遠期資料權重指數衰減")
@@ -89,6 +115,13 @@ if run_btn:
             (date.today() - timedelta(days=lookback_days + 5)).isoformat()
         )
 
+    # 估值維度資料
+    if enable_valuation:
+        per_df = load_stock_per_all(start_date)
+        st.session_state["sr_per_df"] = per_df
+    else:
+        st.session_state.pop("sr_per_df", None)
+
     st.session_state["sr_industry_map"] = industry_map
     st.session_state["sr_revenue_df"] = revenue_df
     st.session_state["sr_chip_df"] = chip_df
@@ -98,11 +131,14 @@ if run_btn:
         "lookback_days": lookback_days,
         "m_weight": m_weight,
         "f_weight": f_weight,
+        "v_weight": v_weight,
         "rotation_periods": rotation_periods,
         "level": level,
         "momentum_decay_hl": momentum_decay_hl,
         "flow_decay_hl": flow_decay_hl,
         "enable_icir": enable_icir,
+        "enable_valuation": enable_valuation,
+        "valuation_method": valuation_method,
     }
 
 if "sr_industry_map" not in st.session_state:
@@ -136,15 +172,38 @@ with tab1:
         # 因子得分的離散度越大 → 區分力越強 → 權重越高
         m_spread = momentum["momentum_score"].std() if not momentum.empty and "momentum_score" in momentum.columns else 0.0
         f_spread = flow["flow_score"].std() if not flow.empty and "flow_score" in flow.columns else 0.0
-        total_spread = m_spread + f_spread
+
+        # 估值維度的離散度（預先計算供 ICIR 使用）
+        v_spread = 0.0
+        if params.get("enable_valuation") and "sr_per_df" in st.session_state:
+            pre_valuation = calc_industry_valuation(
+                st.session_state["sr_per_df"], industry_map, level=level,
+                method=params.get("valuation_method", "percentile"),
+            )
+            if not pre_valuation.empty and "valuation_score" in pre_valuation.columns:
+                v_spread = pre_valuation["valuation_score"].std()
+
+        total_spread = m_spread + f_spread + v_spread
         if total_spread > 0:
             dw_m = round(m_spread / total_spread, 2)
             dw_f = round(f_spread / total_spread, 2)
+            dw_v = round(v_spread / total_spread, 2)
             dynamic_weights = {"momentum": dw_m, "flow": dw_f}
+            if dw_v > 0:
+                dynamic_weights["valuation"] = dw_v
+
+    # 估值維度
+    valuation = None
+    if params.get("enable_valuation") and "sr_per_df" in st.session_state:
+        valuation = calc_industry_valuation(
+            st.session_state["sr_per_df"], industry_map, level=level,
+            method=params.get("valuation_method", "percentile"),
+        )
 
     composite = industry_composite_score(
         momentum, flow, params["m_weight"], params["f_weight"],
         dynamic_weights=dynamic_weights,
+        valuation=valuation, v_weight=params.get("v_weight", 0.0),
     )
 
     if composite.empty:
@@ -156,9 +215,18 @@ with tab1:
         # 顯示當前使用的模型設定
         setting_parts = []
         if dynamic_weights:
-            setting_parts.append(f"ICIR 動態權重：營收 {dynamic_weights['momentum']:.0%} / 法人 {dynamic_weights['flow']:.0%}")
+            dw_label = f"ICIR 動態權重：營收 {dynamic_weights['momentum']:.0%} / 法人 {dynamic_weights['flow']:.0%}"
+            if "valuation" in dynamic_weights:
+                dw_label += f" / 估值 {dynamic_weights['valuation']:.0%}"
+            setting_parts.append(dw_label)
         else:
-            setting_parts.append(f"靜態權重：營收 {params['m_weight']:.0%} / 法人 {params['f_weight']:.0%}")
+            w_label = f"靜態權重：營收 {params['m_weight']:.0%} / 法人 {params['f_weight']:.0%}"
+            if params.get("v_weight", 0) > 0:
+                w_label += f" / 估值 {params['v_weight']:.0%}"
+            setting_parts.append(w_label)
+        if params.get("enable_valuation"):
+            method_label = "百分位" if params.get("valuation_method") == "percentile" else "Z-Score"
+            setting_parts.append(f"估值計分：{method_label}")
         if params.get("momentum_decay_hl"):
             setting_parts.append(f"營收衰減 {params['momentum_decay_hl']}月")
         if params.get("flow_decay_hl"):
@@ -183,8 +251,12 @@ with tab1:
         display["composite_score"] = display["composite_score"].map(lambda x: f"{x:.3f}")
         st.dataframe(display.reset_index(drop=True), use_container_width=True, hide_index=True)
 
-    # 營收動能 & 法人流向明細
-    col1, col2 = st.columns(2)
+    # 營收動能 & 法人流向 & 估值明細
+    if valuation is not None and not valuation.empty:
+        col1, col2, col3 = st.columns(3)
+    else:
+        col1, col2 = st.columns(2)
+
     with col1:
         st.subheader("營收動能排名")
         if not momentum.empty:
@@ -203,6 +275,15 @@ with tab1:
             st.dataframe(f_display.reset_index(drop=True), use_container_width=True, hide_index=True)
         else:
             st.warning("無法人流向資料。")
+
+    if valuation is not None and not valuation.empty:
+        with col3:
+            st.subheader("估值排名")
+            v_display = valuation.copy()
+            v_display["avg_per"] = v_display["avg_per"].map(lambda x: f"{x:.1f}")
+            v_display["avg_pbr"] = v_display["avg_pbr"].map(lambda x: f"{x:.2f}")
+            v_display["valuation_score"] = v_display["valuation_score"].map(lambda x: f"{x:.3f}")
+            st.dataframe(v_display.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 # ===== Tab 2: 輪動熱力圖 =====
 with tab2:

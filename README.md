@@ -25,7 +25,7 @@
 - [x] 市場總覽（全市場漲跌、法人動向、估值分佈、FRED 經濟指標）
 - [x] 多策略組合回測（4 種權重最佳化：等權/Sharpe最大化/最小波動率/風險平價）
 - [x] 因子分析（IC 回測、因子相關性、有效性排行、動態權重追蹤）
-- [x] 產業輪動模型（營收動能 + 法人流向 → 產業排名 + 13 條供應鏈分析 + 指數衰減加權 + ICIR 動態權重）
+- [x] 產業輪動模型（營收動能 + 法人流向 + 估值面 → 三因子產業排名 + 13 條供應鏈分析 + 指數衰減加權 + ICIR 動態權重）
 - [x] 事件研究（除息/財報事件 CAR/AAR 分析 + 事件策略回測）
 - [x] 機器學習選股（LightGBM + Walk-Forward 回測）
 - [x] 報告瀏覽（Markdown 渲染 + CSV 表格 + 下載）
@@ -184,7 +184,7 @@ Stock_analysis/
 │   │   ├── 6_市場總覽.py          # 全市場漲跌、法人、估值
 │   │   ├── 7_策略組合.py          # 多策略組合回測（4 種權重最佳化）
 │   │   ├── 8_因子分析.py          # IC 回測、因子相關性、動態權重
-│   │   ├── 9_產業輪動.py          # 營收動能 + 法人流向 + 供應鏈分析
+│   │   ├── 9_產業輪動.py          # 營收動能 + 法人流向 + 估值面 + 供應鏈分析
 │   │   ├── 10_事件分析.py         # 除息/財報事件 CAR/AAR
 │   │   ├── 11_機器學習.py         # LightGBM 選股 + Walk-Forward
 │   │   └── 12_報告瀏覽.py         # Markdown 渲染 + CSV 表格
@@ -221,7 +221,7 @@ Stock_analysis/
 │       ├── portfolio_optimizer.py # 4 種組合最佳化方法
 │       ├── factor_engine.py       # 多因子評分引擎 + 滾動 IC
 │       ├── dynamic_weights.py     # 滾動 IC → 動態因子權重
-│       ├── sector_rotation.py     # 產業輪動（營收動能 + 法人流向）
+│       ├── sector_rotation.py     # 產業輪動（營收動能 + 法人流向 + 估值面）
 │       ├── event_study.py         # 事件研究引擎（CAR/AAR）
 │       ├── ml_stock_picker.py     # LightGBM 選股引擎
 │       ├── risk.py                # VaR, CVaR, Sharpe, Sortino, Beta
