@@ -19,22 +19,28 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-declare -A SECRET_MAP=(
-    ["supabase-url"]="SUPABASE_URL"
-    ["finmind-token"]="FINMIND_TOKEN"
-    ["email-app-password"]="EMAIL_APP_PASSWORD"
-    ["fred-api-key"]="FRED_API_KEY"
+# Secret 名稱與對應的 .env 變數名（用 : 分隔）
+SECRETS=(
+    "supabase-url:SUPABASE_URL"
+    "finmind-token:FINMIND_TOKEN"
+    "email-app-password:EMAIL_APP_PASSWORD"
+    "fred-api-key:FRED_API_KEY"
 )
 
-# 逐行讀取 .env，安全處理含空格的值
-declare -A ENV_VALS
-while IFS='=' read -r key value; do
-    [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
-    # 移除值的前後引號（如有）
-    value="${value%\"}"
-    value="${value#\"}"
-    ENV_VALS["$key"]="$value"
-done < "$ENV_FILE"
+# 從 .env 讀取指定變數的值（安全處理含空格的值）
+read_env_value() {
+    local target_key="$1"
+    while IFS='=' read -r key value; do
+        [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
+        if [ "$key" = "$target_key" ]; then
+            # 移除值的前後引號（如有）
+            value="${value%\"}"
+            value="${value#\"}"
+            printf '%s' "$value"
+            return
+        fi
+    done < "$ENV_FILE"
+}
 
 # --- Helper: 建立或更新 Secret ---
 upsert_secret() {
@@ -62,9 +68,11 @@ upsert_secret() {
 }
 
 echo "=== 建立 / 更新 Secrets ==="
-for SECRET_NAME in "${!SECRET_MAP[@]}"; do
-    ENV_KEY="${SECRET_MAP[$SECRET_NAME]}"
-    upsert_secret "$SECRET_NAME" "${ENV_VALS[$ENV_KEY]:-}"
+for entry in "${SECRETS[@]}"; do
+    SECRET_NAME="${entry%%:*}"
+    ENV_KEY="${entry##*:}"
+    ENV_VALUE=$(read_env_value "$ENV_KEY")
+    upsert_secret "$SECRET_NAME" "$ENV_VALUE"
 done
 
 # --- 授權 Cloud Run SA 存取 Secrets ---
