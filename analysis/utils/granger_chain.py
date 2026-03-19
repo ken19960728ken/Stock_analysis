@@ -10,6 +10,7 @@ import json
 import time
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import grangercausalitytests
@@ -135,3 +136,78 @@ def granger_pairwise(
         return pd.DataFrame(columns=["source", "target", "lag", "f_stat", "p_value"])
 
     return pd.DataFrame(results).sort_values("p_value").reset_index(drop=True)
+
+
+def build_causal_graph(pairs_df: pd.DataFrame) -> nx.DiGraph:
+    """從顯著因果 pair 建構有向圖
+
+    Args:
+        pairs_df: granger_pairwise() 的回傳值
+
+    Returns:
+        nx.DiGraph，邊屬性含 lag, f_stat, p_value
+    """
+    G = nx.DiGraph()
+    if pairs_df.empty:
+        return G
+
+    for _, row in pairs_df.iterrows():
+        G.add_edge(
+            row["source"], row["target"],
+            lag=row["lag"],
+            f_stat=row["f_stat"],
+            p_value=row["p_value"],
+        )
+    return G
+
+
+def discover_chains(graph: nx.DiGraph, min_length: int = 3) -> list[list[str]]:
+    """從因果 DAG 中提取最長路徑作為「自動發現的供應鏈」
+
+    Args:
+        graph: 因果有向圖
+        min_length: 最短鏈長度（節點數）
+
+    Returns:
+        按長度降冪排序的鏈列表
+    """
+    if len(graph.nodes) == 0:
+        return []
+
+    # 移除環（保留 F-stat 較大的邊）以得到 DAG
+    dag = graph.copy()
+    while not nx.is_directed_acyclic_graph(dag):
+        try:
+            cycle = nx.find_cycle(dag)
+        except nx.NetworkXNoCycle:
+            break
+        # 移除環中 F-stat 最小的邊
+        weakest = min(cycle, key=lambda e: dag.edges[e[0], e[1]].get("f_stat", 0))
+        dag.remove_edge(weakest[0], weakest[1])
+
+    # 從每個源節點（入度=0）出發，找最長路徑
+    chains = []
+    sources = [n for n in dag.nodes if dag.in_degree(n) == 0]
+
+    for source in sources:
+        for target in dag.nodes:
+            if source == target:
+                continue
+            for path in nx.all_simple_paths(dag, source, target):
+                if len(path) >= min_length:
+                    chains.append(path)
+
+    # 去重（子路徑被更長路徑包含時移除）
+    chains.sort(key=len, reverse=True)
+    unique_chains = []
+    for chain in chains:
+        chain_set = set(tuple(chain))
+        is_subset = False
+        for existing in unique_chains:
+            if chain_set.issubset(set(tuple(existing))):
+                is_subset = True
+                break
+        if not is_subset:
+            unique_chains.append(chain)
+
+    return unique_chains

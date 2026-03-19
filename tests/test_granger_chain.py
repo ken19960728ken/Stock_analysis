@@ -4,7 +4,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from analysis.utils.granger_chain import build_industry_series, granger_pairwise
+from analysis.utils.granger_chain import (
+    build_industry_series,
+    granger_pairwise,
+    build_causal_graph,
+    discover_chains,
+)
 
 
 @pytest.fixture
@@ -100,3 +105,46 @@ class TestGrangerPairwise:
         }
         result = granger_pairwise(series, max_lag=3, p_threshold=0.05)
         assert result.empty
+
+
+class TestBuildCausalGraph:
+    def test_basic_graph(self):
+        pairs_df = pd.DataFrame({
+            "source": ["A", "B", "C"],
+            "target": ["B", "C", "D"],
+            "lag": [1, 2, 1],
+            "f_stat": [5.0, 3.0, 4.0],
+            "p_value": [0.01, 0.03, 0.02],
+        })
+        graph = build_causal_graph(pairs_df)
+        assert len(graph.nodes) == 4
+        assert len(graph.edges) == 3
+        assert graph.has_edge("A", "B")
+
+    def test_empty_pairs(self):
+        pairs_df = pd.DataFrame(columns=["source", "target", "lag", "f_stat", "p_value"])
+        graph = build_causal_graph(pairs_df)
+        assert len(graph.nodes) == 0
+
+
+class TestDiscoverChains:
+    def test_linear_chain(self):
+        """A→B→C→D 應發現 [A, B, C, D]"""
+        pairs_df = pd.DataFrame({
+            "source": ["A", "B", "C"],
+            "target": ["B", "C", "D"],
+            "lag": [1, 1, 1],
+            "f_stat": [5.0, 5.0, 5.0],
+            "p_value": [0.01, 0.01, 0.01],
+        })
+        graph = build_causal_graph(pairs_df)
+        chains = discover_chains(graph)
+        assert len(chains) > 0
+        # 最長鏈應包含 4 個節點
+        longest = max(chains, key=len)
+        assert len(longest) >= 3
+
+    def test_empty_graph(self):
+        import networkx as nx
+        chains = discover_chains(nx.DiGraph())
+        assert chains == []
