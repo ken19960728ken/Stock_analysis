@@ -321,6 +321,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Cloud Run 部署注意事項
 
+- **敏感變數由 GCP Secret Manager 管理**：`SUPABASE_URL`、`FINMIND_TOKEN`、`EMAIL_APP_PASSWORD`、`FRED_API_KEY` 透過 `--set-secrets` 注入，`gcloud describe` 只顯示參照路徑。初次部署前需執行 `bash deploy/setup-secrets.sh`。
+- 非敏感變數（`DB_POOL_SIZE`、`DB_POOL_OVERFLOW`、`EMAIL_SENDER`、`EMAIL_RECIPIENTS`）由 YAML 環境變數檔傳入。
 - Apple Silicon Mac 部署到 Cloud Run 必須用 `docker buildx build --platform linux/amd64`，否則容器啟動會報 `exec format error`。
 - gcloud `--set-env-vars` 遇到含 `@` 或特殊字元的值會解析失敗，應改用 `--env-vars-file` 搭配 YAML 檔傳入環境變數。
 - macOS 13 (Ventura) 需安裝 Docker Desktop 4.30（build 149282），4.64+ 不支援 Ventura。
