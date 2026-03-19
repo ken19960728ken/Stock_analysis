@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # 部署 Cloud Run Service: stock-analysis (Streamlit 前端)
+# 敏感變數由 Secret Manager 注入，非敏感變數由 YAML 環境變數檔傳入
 # 用法: bash deploy/deploy-analysis.sh
-# 環境變數需設定: GCP_PROJECT_ID, SUPABASE_URL
+# 前置: bash deploy/setup-secrets.sh（建立 secrets + 授權）
 # ==============================================================================
 set -euo pipefail
 
@@ -15,17 +16,16 @@ SERVICE_NAME="stock-analysis"
 echo "=== 建置 Analysis Docker 映像 (linux/amd64) ==="
 docker buildx build --platform linux/amd64 -f Dockerfile.analysis -t "$IMAGE" --push .
 
-echo "=== 產生環境變數檔 ==="
+echo "=== 產生環境變數檔（僅非敏感值） ==="
 ENV_FILE=$(mktemp /tmp/analysis-env-XXXXXX.yaml)
 trap "rm -f $ENV_FILE" EXIT
 
 cat > "$ENV_FILE" <<EOF
-SUPABASE_URL: "${SUPABASE_URL:?請設定 SUPABASE_URL}"
 DB_POOL_SIZE: "3"
 DB_POOL_OVERFLOW: "2"
 EOF
 
-[ -n "${FRED_API_KEY:-}" ] && echo "FRED_API_KEY: \"${FRED_API_KEY}\"" >> "$ENV_FILE"
+# 敏感值（SUPABASE_URL, FRED_API_KEY）由 Secret Manager 注入
 
 echo "=== 部署 Cloud Run Service ==="
 gcloud run deploy "$SERVICE_NAME" \
@@ -39,7 +39,8 @@ gcloud run deploy "$SERVICE_NAME" \
     --port=8501 \
     --timeout=300 \
     --allow-unauthenticated \
-    --env-vars-file="$ENV_FILE"
+    --env-vars-file="$ENV_FILE" \
+    --set-secrets="SUPABASE_URL=supabase-url:latest,FRED_API_KEY=fred-api-key:latest"
 
 echo "=== 完成 ==="
 SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")

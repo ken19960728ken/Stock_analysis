@@ -10,6 +10,13 @@ set -euo pipefail
 PROJECT_ID="${GCP_PROJECT_ID:?請設定 GCP_PROJECT_ID 環境變數}"
 REGION="${GCP_REGION:-asia-east1}"
 
+# 自動偵測 default compute service account（不依賴 App Engine）
+SA_EMAIL=$(gcloud iam service-accounts list --project="$PROJECT_ID" \
+    --filter="email:compute@developer.gserviceaccount.com" \
+    --format="value(email)" | head -1)
+[ -z "$SA_EMAIL" ] && { echo "ERROR: 找不到 default compute service account"; exit 1; }
+echo "使用 Service Account: $SA_EMAIL"
+
 # --- Helper: 建立或更新排程 ---
 setup_scheduler() {
     local SCHEDULER_NAME="$1"
@@ -31,7 +38,7 @@ setup_scheduler() {
         --time-zone="UTC" \
         --uri="$JOB_URI" \
         --http-method="POST" \
-        --oauth-service-account-email="${PROJECT_ID}@appspot.gserviceaccount.com" \
+        --oauth-service-account-email="$SA_EMAIL" \
         --description="$DESCRIPTION"
 }
 

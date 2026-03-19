@@ -16,6 +16,7 @@ gcloud services enable \
     cloudscheduler.googleapis.com \
     artifactregistry.googleapis.com \
     cloudbuild.googleapis.com \
+    secretmanager.googleapis.com \
     --project "$PROJECT_ID"
 
 echo "=== 建立 Artifact Registry ==="
