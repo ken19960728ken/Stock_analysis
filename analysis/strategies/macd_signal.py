@@ -74,29 +74,23 @@ class MACDStrategy(Strategy):
         for i in range(lookback, n):
             window_start = i - lookback
 
-            # 看漲背離：價格創新低但 MACD_hist 未創新低
+            # 看漲背離：價格創新低但「同一時間點」的 MACD_hist 未創新低
             price_mins = find_local_min(close[window_start:i + 1], order)
-            hist_mins = find_local_min(hist[window_start:i + 1], order)
 
-            if len(price_mins) >= 2 and len(hist_mins) >= 2:
-                # 最近兩個低點
+            if len(price_mins) >= 2:
+                # 比較價格的兩個低點，以及這兩個時間點對應的 MACD_hist
                 p1, p2 = price_mins[-2], price_mins[-1]
-                h1, h2 = hist_mins[-2], hist_mins[-1]
-                # 價格創新低但 MACD_hist 高於前低 = 看漲背離
-                if close[window_start + p2] < close[window_start + p1] and \
-                   hist[window_start + h2] > hist[window_start + h1]:
+                if (close[window_start + p2] < close[window_start + p1] and
+                        hist[window_start + p2] > hist[window_start + p1]):
                     bullish.iloc[i] = True
 
-            # 看跌背離：價格創新高但 MACD_hist 未創新高
+            # 看跌背離：價格創新高但「同一時間點」的 MACD_hist 未創新高
             price_maxs = find_local_max(close[window_start:i + 1], order)
-            hist_maxs = find_local_max(hist[window_start:i + 1], order)
 
-            if len(price_maxs) >= 2 and len(hist_maxs) >= 2:
+            if len(price_maxs) >= 2:
                 p1, p2 = price_maxs[-2], price_maxs[-1]
-                h1, h2 = hist_maxs[-2], hist_maxs[-1]
-                # 價格創新高但 MACD_hist 低於前高 = 看跌背離
-                if close[window_start + p2] > close[window_start + p1] and \
-                   hist[window_start + h2] < hist[window_start + h1]:
+                if (close[window_start + p2] > close[window_start + p1] and
+                        hist[window_start + p2] < hist[window_start + p1]):
                     bearish.iloc[i] = True
 
         return bullish, bearish

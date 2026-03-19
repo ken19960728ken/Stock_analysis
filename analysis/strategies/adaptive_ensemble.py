@@ -130,10 +130,18 @@ class AdaptiveEnsembleStrategy(Strategy):
         score = pd.Series(0.0, index=df.index)
 
         buy_col = None
+        # 優先找淨買超欄位（含 "net"），避免誤中單邊買量欄位
         for col in df.columns:
-            if any(k in col.lower() for k in ["buy", "買", "foreign", "institutional"]):
+            cl = col.lower()
+            if "net" in cl and any(k in cl for k in ["buy", "買", "foreign", "institutional"]):
                 buy_col = col
                 break
+        if buy_col is None:
+            for col in df.columns:
+                cl = col.lower()
+                if cl in ("institutional_net_buy", "foreign_net_buy", "法人買賣超"):
+                    buy_col = col
+                    break
 
         if buy_col is None:
             return score

@@ -281,6 +281,59 @@ class TestVolatilitySqueezeStrategy:
 
 
 # ===================================================================
+# 營收動能 — rolling max/min 修復驗證
+# ===================================================================
+
+class TestRevenueMomentumRollingFix:
+    """驗證 rev_6m_max/min 排除自身（shift(1)）"""
+
+    def test_rev_new_high_actually_filters(self):
+        """營收新高條件應有選擇性（非每月都成立）"""
+        from analysis.strategies.revenue_momentum import RevenueMomentumStrategy
+        # 建構：前 6 個月營收穩定，第 7 個月突破
+        n = 200
+        dates = pd.bdate_range("2024-01-01", periods=n)
+        # 模擬月營收（每月約 21 天，ffill）
+        monthly_rev = [100] * 126 + [110] * 21 + [100] * (n - 147)  # 只有第 7 月突破
+        df = pd.DataFrame({
+            "date": dates, "open": [500] * n, "high": [505] * n,
+            "low": [495] * n, "close": [500] * n, "volume": [1_000_000] * n,
+            "revenue": monthly_rev,
+            "revenue_yoy": [20.0] * n,
+            "revenue_month": [(d.month) for d in dates],
+            "revenue_year": [d.year for d in dates],
+        })
+        s = RevenueMomentumStrategy()
+        s.set_params(enable_pe_filter=False, yoy_threshold=10.0)
+        result = s.generate_signals(df)
+        # 穩定期（前 126 天）不應有大量買入訊號
+        # （修復前 rev >= rev_6m_max 含自身，穩定期也會成立）
+        stable_buys = (result["signal"].iloc[:126] == 1).sum()
+        assert stable_buys == 0, f"穩定期不應有買入訊號，實際 {stable_buys} 個"
+
+    def test_sell_condition_can_trigger(self):
+        """營收跌破前低 → 應觸發賣出（修復前永不觸發）"""
+        from analysis.strategies.revenue_momentum import RevenueMomentumStrategy
+        n = 250
+        dates = pd.bdate_range("2024-01-01", periods=n)
+        # 先高後低：前 150 天營收 100，後 100 天驟降至 60
+        rev = [100.0] * 150 + [60.0] * 100
+        df = pd.DataFrame({
+            "date": dates, "open": [500] * n, "high": [505] * n,
+            "low": [495] * n, "close": [500] * n, "volume": [1_000_000] * n,
+            "revenue": rev,
+            "revenue_yoy": [20.0] * 150 + [-40.0] * 100,
+            "revenue_month": [(d.month) for d in dates],
+            "revenue_year": [d.year for d in dates],
+        })
+        s = RevenueMomentumStrategy()
+        s.set_params(enable_pe_filter=False, max_holding_days=0)
+        result = s.generate_signals(df)
+        # 營收驟降應觸發賣出
+        assert (result["signal"] == -1).any(), "營收跌破前低應觸發賣出"
+
+
+# ===================================================================
 # 策略註冊測試
 # ===================================================================
 

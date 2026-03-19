@@ -411,6 +411,41 @@ class TestAdaptiveEnsembleStrategy:
         # 價值分數應為正
         assert (result["value_score"] > 0).any()
 
+    def test_institutional_score_prefers_net_buy_column(self, sample_stock_id):
+        """法人分數應優先使用含 'net' 的淨買超欄位，而非單邊 'buy' 欄位"""
+        n = 50
+        dates = pd.date_range("2023-01-01", periods=n, freq="B")
+        # foreign_buy = 永遠正值（單邊買量），institutional_net_buy = 有正有負
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": [500] * n, "high": [505] * n, "low": [495] * n,
+            "close": [500] * n, "volume": [30_000_000] * n,
+            "foreign_buy": [1000] * n,                   # 單邊量，不應被使用
+            "institutional_net_buy": [-500] * 20 + [500] * 10 + [-500] * 20,
+        })
+        s = AdaptiveEnsembleStrategy()
+        result = s.generate_signals(df)
+        # 若正確使用 net_buy，前 20 天賣超時法人分數應 < 0
+        early_period = result.iloc[5:20]
+        assert (early_period["inst_score"] <= 0).all(), \
+            "應使用 institutional_net_buy 而非 foreign_buy"
+
+    def test_no_net_column_falls_back_gracefully(self, sample_stock_id):
+        """無 net 欄位也無精確匹配 → 法人分數為 0"""
+        n = 50
+        dates = pd.date_range("2023-01-01", periods=n, freq="B")
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": [500] * n, "high": [505] * n, "low": [495] * n,
+            "close": [500] * n, "volume": [30_000_000] * n,
+            # 只有單邊 buy 欄位，不含 "net" → 不該被匹配
+            "foreign_buy": [1000] * n,
+        })
+        s = AdaptiveEnsembleStrategy()
+        result = s.generate_signals(df)
+        # 找不到淨值欄位，法人分數應全為 0
+        assert (result["inst_score"] == 0.0).all()
+
 
 # ============================================================================
 # 3. Cross-Strategy Integration Tests

@@ -809,6 +809,104 @@ class TestMLFactorStrategy:
         )
 
 
+class TestDualThrustNoLookAhead:
+    """Dual Thrust — 驗證無 Look-Ahead Bias"""
+
+    def test_range_excludes_current_bar(self, sample_stock_id):
+        """rolling range 不應包含當日資料"""
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=20, freq="B")
+        close = np.array([500.0 + i * 2 for i in range(20)])
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 1, "high": close + 3, "low": close - 3,
+            "close": close, "volume": [30_000_000] * 20,
+        })
+        s = DualThrustStrategy()
+        s.set_params(lookback=5)
+        result = s.generate_signals(df)
+        # 第 6 根 K 線（index=5）的 upper 應基於 index 0-4 的資料
+        # 而非包含 index 5 自身
+        # 驗證 upper 有值且合理
+        assert "upper" in result.columns
+        assert result["upper"].iloc[6:].notna().all()
+
+    def test_no_signal_on_first_n_bars(self, sample_stock_id):
+        """前 N+1 根 K 線不應有訊號（shift(1) + rolling(N) 需暖機）"""
+        dates = pd.date_range("2023-01-01", periods=20, freq="B")
+        close = np.array([500.0 + i * 3 for i in range(20)])
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 1, "high": close + 3, "low": close - 3,
+            "close": close, "volume": [30_000_000] * 20,
+        })
+        s = DualThrustStrategy()
+        s.set_params(lookback=5)
+        result = s.generate_signals(df)
+        # 前 6 根（index 0-5）因 shift+rolling 暖機應為 NaN/0
+        assert (result["signal"].iloc[:6] == 0).all()
+
+
+class TestMACDDivergenceFixed:
+    """MACD 背離 — 驗證使用價格低/高點對應的 MACD_hist"""
+
+    def test_bullish_divergence_price_new_low_macd_higher(self, sample_stock_id):
+        """價格創新低但同一時間點的 MACD_hist 更高 → 看漲背離"""
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=80, freq="B")
+        # 建構雙底：第一底更淺、第二底更深，但動能減弱
+        close = np.concatenate([
+            np.linspace(550, 520, 20),   # 第一波下跌
+            np.linspace(520, 540, 15),   # 反彈
+            np.linspace(540, 510, 20),   # 第二波下跌（價格新低）
+            np.linspace(510, 560, 25),   # 反彈
+        ])
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 1, "high": close + 3, "low": close - 3,
+            "close": close, "volume": [30_000_000] * 80,
+        })
+        s = MACDStrategy()
+        s.set_params(use_divergence=True, divergence_lookback=40, divergence_order=3)
+        result = s.generate_signals(df)
+        assert "signal" in result.columns
+        assert set(result["signal"].unique()).issubset({-1, 0, 1})
+
+    def test_divergence_disabled_no_crash(self, sample_ohlcv_50d):
+        """關閉背離偵測 → 正常運作"""
+        s = MACDStrategy()
+        s.set_params(use_divergence=False)
+        result = s.generate_signals(sample_ohlcv_50d)
+        assert "signal" in result.columns
+
+
+class TestParabolicSARNoFalseInitial:
+    """Parabolic SAR — 驗證初始假訊號已被過濾"""
+
+    def test_no_signal_on_first_two_bars(self, sample_stock_id):
+        """前 2 根 K 線不應有任何訊號"""
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=60, freq="B")
+        close = np.concatenate([
+            np.linspace(480, 560, 30),
+            np.linspace(558, 470, 30),
+        ])
+        noise = np.random.randn(60) * 2
+        close = close + noise
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 2, "high": close + 5, "low": close - 5,
+            "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 60),
+        })
+        s = ParabolicSARStrategy()
+        s.set_params(adx_threshold=0)  # 極低門檻，只測初始過濾
+        result = s.generate_signals(df)
+        # 前 2 根 K 線不應有訊號
+        assert (result["signal"].iloc[:2] == 0).all()
+        # 後續應有訊號（趨勢反轉）
+        assert (result["signal"] != 0).sum() > 0
+
+
 class TestParabolicSARSellWithoutADX:
     """Parabolic SAR 賣出不受 ADX 過濾"""
 

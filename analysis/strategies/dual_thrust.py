@@ -17,11 +17,11 @@ class DualThrustStrategy(Strategy):
         k2 = self.params["k2"]
         vol_ratio = self.params.get("volume_ratio", 1.2)
 
-        # 計算 Range
-        hh = df["high"].rolling(n).max()  # N 日最高價
-        lc = df["close"].rolling(n).min()  # N 日最低收盤
-        hc = df["close"].rolling(n).max()  # N 日最高收盤
-        ll = df["low"].rolling(n).min()  # N 日最低價
+        # 計算 Range（排除當日，避免 Look-Ahead Bias）
+        hh = df["high"].shift(1).rolling(n).max()  # 前 N 日最高價
+        lc = df["close"].shift(1).rolling(n).min()  # 前 N 日最低收盤
+        hc = df["close"].shift(1).rolling(n).max()  # 前 N 日最高收盤
+        ll = df["low"].shift(1).rolling(n).min()  # 前 N 日最低價
 
         range_val = pd.concat([hh - lc, hc - ll], axis=1).max(axis=1)
 

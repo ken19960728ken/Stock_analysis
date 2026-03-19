@@ -65,9 +65,9 @@ class RevenueMomentumStrategy(Strategy):
         yoy_filled = df["revenue_yoy"].astype(float).ffill()
         rev_filled = df["revenue"].astype(float).ffill()
 
-        # ─── 營收 6 個月 rolling max / min ───
-        df["rev_6m_max"] = rev_filled.rolling(window=126, min_periods=10).max()
-        df["rev_6m_min"] = rev_filled.rolling(window=126, min_periods=10).min()
+        # ─── 營收 6 個月 rolling max / min（排除當期，避免自含偏差）───
+        df["rev_6m_max"] = rev_filled.shift(1).rolling(window=126, min_periods=10).max()
+        df["rev_6m_min"] = rev_filled.shift(1).rolling(window=126, min_periods=10).min()
 
         # ─── YoY 加速（向量化）───
         yoy_increasing = pd.Series(True, index=df.index)

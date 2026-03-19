@@ -100,6 +100,11 @@ class ParabolicSARStrategy(Strategy):
         bull_signal = sar_long_s.notna() & sar_long_s.shift(1).isna()
         bear_signal = sar_short_s.notna() & sar_short_s.shift(1).isna()
 
+        # 過濾初始假訊號：bull 初始為 True，第 2 根 K 線必然被標記為翻多
+        # 這不是真正的趨勢反轉，需排除前 2 根 K 線
+        bull_signal.iloc[:2] = False
+        bear_signal.iloc[:2] = False
+
         # ADX 趨勢強度過濾：只在趨勢明確時交易
         adx = self._calc_adx(df, adx_period)
         strong_trend = adx > adx_threshold
