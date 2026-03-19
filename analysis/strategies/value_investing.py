@@ -28,7 +28,8 @@ class ValueInvestingStrategy(Strategy):
         # P/E 條件
         pe_col = None
         for c in df.columns:
-            if "PER" in c or "pe" in c.lower():
+            cl = c.lower()
+            if c == "PER" or cl in ("per", "pe_ratio", "pe", "本益比") or "p/e" in cl:
                 pe_col = c
                 break
         if pe_col is not None:

@@ -38,7 +38,7 @@ class FreeCashFlowStrategy(Strategy):
                 capex_col = c
                 break
 
-        capex = pd.to_numeric(df[capex_col], errors="coerce").abs() if capex_col else 0
+        capex = pd.to_numeric(df[capex_col], errors="coerce").abs().fillna(0) if capex_col else 0
         fcf = ocf - capex
 
         # 偵測市值欄位（用於計算 FCF Yield）

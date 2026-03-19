@@ -60,7 +60,10 @@ class MLFactorStrategy(Strategy):
         score += np.sign(macd_hist) * 0.3
         score += (vol_ratio - 1).clip(-1, 1) * 0.3
 
-        df.loc[score >= 0.3, "signal"] = 1
-        df.loc[score <= -0.3, "signal"] = -1
+        # 邊緣觸發：只在分數跨越閾值時產生訊號
+        above = score >= 0.3
+        below = score <= -0.3
+        df.loc[above & ~above.shift(1, fill_value=False), "signal"] = 1
+        df.loc[below & ~below.shift(1, fill_value=False), "signal"] = -1
 
         return df

@@ -137,8 +137,8 @@ class TrendFilteredMAStrategy(Strategy):
                 # 持有狀態
                 holding_count += 1
 
-                # 保護性賣出：跌破趨勢線（不受最低持有期限制）
-                if trend_exit and use_trend:
+                # 保護性賣出：跌破趨勢線（不受最低持有期限制，獨立於 use_trend）
+                if trend_exit:
                     if pd.notna(df["trend_ma"].iloc[i]):
                         if df["close"].iloc[i] < df["trend_ma"].iloc[i] * 0.98:
                             signals[i] = -1

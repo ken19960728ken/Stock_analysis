@@ -48,14 +48,22 @@ class MarginSignalStrategy(Strategy):
         df = data.copy()
         df["signal"] = 0
 
-        # 偵測融資餘額欄位（修正運算子優先級）
+        # 偵測融資餘額欄位
         margin_col = None
-        for c in df.columns:
-            if "margin_purchase_balance" in c.lower() or (
-                "margin" in c.lower() and "short" not in c.lower()
-            ):
+        # 優先精確匹配
+        preferred = ["MarginPurchaseTodayBalance", "margin_purchase_balance",
+                     "MarginPurchaseBalance", "margin_purchase_today_balance"]
+        for c in preferred:
+            if c in df.columns:
                 margin_col = c
                 break
+        # fallback：含 margin + balance 但排除 short
+        if margin_col is None:
+            for c in df.columns:
+                cl = c.lower()
+                if "margin" in cl and "balance" in cl and "short" not in cl:
+                    margin_col = c
+                    break
 
         if margin_col is None:
             return df

@@ -33,9 +33,15 @@ class InstitutionalStrategy(Strategy):
         if "institutional_net_buy" in df.columns:
             return pd.to_numeric(df["institutional_net_buy"], errors="coerce")
 
-        # fallback：動態偵測第一個含 buy 的欄位（向後相容）
+        # fallback：優先匹配含 net 的欄位（淨買超），避免誤取單邊買入
         for col in df.columns:
-            if any(k in col.lower() for k in ["buy", "買", "foreign", "institutional"]):
+            cl = col.lower()
+            if "net" in cl and any(k in cl for k in ["buy", "買", "foreign", "institutional"]):
+                return pd.to_numeric(df[col], errors="coerce")
+        # 最後 fallback：法人買賣超等合計欄位
+        for col in df.columns:
+            cl = col.lower()
+            if cl in ("法人買賣超", "institutional_buy_sell"):
                 return pd.to_numeric(df[col], errors="coerce")
 
         return None

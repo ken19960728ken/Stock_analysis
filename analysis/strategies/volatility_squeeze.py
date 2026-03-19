@@ -83,7 +83,7 @@ class VolatilitySqueezeStrategy(Strategy):
 
         df["signal"] = 0
         df.loc[buy, "signal"] = 1
-        df.loc[sell, "signal"] = -1
+        df.loc[sell & ~buy, "signal"] = -1  # 買賣同 bar 時買入優先
 
         # 清理暫時欄位
         df.drop(

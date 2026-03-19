@@ -66,10 +66,15 @@ class MultiFactorStrategy(Strategy):
         # --- 籌碼面分數 ---
         chip_score = pd.Series(0.0, index=df.index)
         buy_col = None
-        for col in df.columns:
-            if any(k in col.lower() for k in ["buy", "買", "foreign", "institutional"]):
-                buy_col = col
-                break
+        # 優先匹配淨買超欄位
+        if "institutional_net_buy" in df.columns:
+            buy_col = "institutional_net_buy"
+        else:
+            for col in df.columns:
+                cl = col.lower()
+                if "net" in cl and any(k in cl for k in ["buy", "買", "foreign", "institutional"]):
+                    buy_col = col
+                    break
         if buy_col is not None:
             vals = pd.to_numeric(df[buy_col], errors="coerce").fillna(0)
             chip_score = vals.apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
@@ -78,7 +83,8 @@ class MultiFactorStrategy(Strategy):
         fund_score = pd.Series(0.0, index=df.index)
         pe_col = None
         for c in df.columns:
-            if "PER" in c or "pe" in c.lower():
+            cl = c.lower()
+            if c == "PER" or cl in ("per", "pe_ratio", "pe", "本益比") or "p/e" in cl:
                 pe_col = c
                 break
         if pe_col is not None:
@@ -92,12 +98,14 @@ class MultiFactorStrategy(Strategy):
             chip_score = zscore_normalize(chip_score)
             fund_score = zscore_normalize(fund_score)
 
-        # --- 綜合評分 ---
+        # --- 綜合評分（權重正規化） ---
         w = self.params
+        w_sum = w["tech_weight"] + w["chip_weight"] + w["fund_weight"]
+        w_sum = w_sum if w_sum > 0 else 1.0
         total_score = (
-            tech_score * w["tech_weight"]
-            + chip_score * w["chip_weight"]
-            + fund_score * w["fund_weight"]
+            tech_score * (w["tech_weight"] / w_sum)
+            + chip_score * (w["chip_weight"] / w_sum)
+            + fund_score * (w["fund_weight"] / w_sum)
         )
 
         buy_sig = (total_score > w["buy_threshold"]) & (total_score.shift(1) <= w["buy_threshold"])

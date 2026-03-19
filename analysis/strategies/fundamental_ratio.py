@@ -26,9 +26,13 @@ class FundamentalRatioStrategy(Strategy):
         gp_col = None
         rev_col = None
         for c in df.columns:
-            if "grossprofit" in c.lower() or "gross_profit" in c.lower():
+            cl = c.lower()
+            if gp_col is None and ("grossprofit" in cl or "gross_profit" in cl):
                 gp_col = c
-            if c.lower() == "revenue" or "revenue" in c.lower() and "yoy" not in c.lower():
+            if rev_col is None and (
+                cl == "revenue"
+                or ("revenue" in cl and "yoy" not in cl and "month" not in cl and "year" not in cl)
+            ):
                 rev_col = c
 
         if gp_col and rev_col:

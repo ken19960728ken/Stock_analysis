@@ -46,10 +46,10 @@ class EventDrivenStrategy(Strategy):
             last_exit_pos = -1
 
             for pos in dividend_positions:
-                # 殖利率過濾：dividend / close * 100
-                close_at_ex = df["close"].iloc[pos] if pos < len(df) else None
-                if close_at_ex is not None and close_at_ex > 0:
-                    div_yield = df["dividend"].iloc[pos] / close_at_ex * 100
+                # 殖利率過濾：dividend / 前一日 close * 100（除息日收盤已扣股利）
+                prev_close = df["close"].iloc[pos - 1] if pos > 0 else None
+                if prev_close is not None and prev_close > 0:
+                    div_yield = df["dividend"].iloc[pos] / prev_close * 100
                     if div_yield < min_yield:
                         continue
 

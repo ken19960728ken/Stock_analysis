@@ -465,7 +465,7 @@ class TestInstitutionalStrategy:
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
             "close": [500 + i * 2 for i in range(30)],
-            "institutional_buy": net_buy,
+            "institutional_net_buy": net_buy,
         })
         s = InstitutionalStrategy()
         result = s.generate_signals(df)
@@ -478,7 +478,7 @@ class TestInstitutionalStrategy:
         df = pd.DataFrame({
             "date": dates, "stock_id": sample_stock_id,
             "close": [500 - i for i in range(30)],
-            "institutional_buy": net_buy,
+            "institutional_net_buy": net_buy,
         })
         s = InstitutionalStrategy()
         result = s.generate_signals(df)

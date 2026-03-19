@@ -67,10 +67,10 @@ class VolumePriceMomentumStrategy(Strategy):
             (df["close"] > df["trend_ma"])
         )
 
-        # 賣出條件（更寬鬆：20日均線 + 5日萎縮）
+        # 賣出條件：跌破均線，或量縮 + 價格回落至突破點以下
         sell = (
             (df["close"] < df["exit_ma"]) |
-            (consec_shrink >= shrink_days)
+            ((consec_shrink >= shrink_days) & (df["close"] < df["high_max"]))
         )
 
         df["signal"] = 0
