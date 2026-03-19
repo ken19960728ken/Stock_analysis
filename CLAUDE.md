@@ -318,6 +318,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
   1. 更新對應文件（`analysis/documents/` 下的模型文件 + `README.md` 中的相關描述）
   2. 更新 `CLAUDE.md`（如有架構、策略、頁面等變動）
   3. 重新部署 Analysis Service（`bash deploy/deploy-analysis.sh`），否則線上版本不會更新
+- **每次重新部署（Pipeline Job 或 Analysis Service）前，必須**：
+  1. 檢查 `deploy/部署流程.md` 是否需要同步更新（新增/移除環境變數、Secret、API、Dockerfile 變動、排程變動等）
+  2. 確認部署腳本（`deploy/*.sh`）的實際行為與 `deploy/部署流程.md` 描述一致
+  3. 如有差異，先更新文件再執行部署，確保文件永遠反映線上最新狀態
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
