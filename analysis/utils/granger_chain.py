@@ -266,3 +266,105 @@ def load_or_compute(
         json.dump(cache_data, f, ensure_ascii=False, indent=2)
 
     return pairs, graph
+
+
+def plot_causal_network(
+    graph: nx.DiGraph,
+    industry_map: pd.DataFrame | None = None,
+) -> "go.Figure":
+    """用 Plotly + networkx 繪製因果網絡圖
+
+    Args:
+        graph: 因果有向圖
+        industry_map: 用於按 sector 著色（可選）
+
+    Returns:
+        plotly Figure
+    """
+    import plotly.graph_objects as go
+
+    if len(graph.nodes) == 0:
+        fig = go.Figure()
+        fig.add_annotation(text="無顯著因果關係", showarrow=False)
+        return fig
+
+    # networkx spring layout
+    pos = nx.spring_layout(graph, seed=42, k=2.0)
+
+    # sector 顏色映射
+    sector_map = {}
+    if industry_map is not None and "sub_industry" in industry_map.columns:
+        sector_col = "sector" if "sector" in industry_map.columns else "industry_category"
+        for _, row in industry_map.drop_duplicates("sub_industry").iterrows():
+            if pd.notna(row.get("sub_industry")):
+                sector_map[row["sub_industry"]] = row.get(sector_col, "其他")
+
+    sectors = list(set(sector_map.values())) or ["default"]
+    color_palette = [
+        "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
+        "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
+    ]
+    sector_colors = {s: color_palette[i % len(color_palette)] for i, s in enumerate(sectors)}
+
+    # 邊
+    edge_traces = []
+    annotations = []
+    for src, tgt, data in graph.edges(data=True):
+        x0, y0 = pos[src]
+        x1, y1 = pos[tgt]
+        f_stat = data.get("f_stat", 1.0)
+        p_val = data.get("p_value", 0.05)
+        lag = data.get("lag", 1)
+        width = max(1, min(5, f_stat / 3))
+
+        edge_traces.append(go.Scatter(
+            x=[x0, x1, None], y=[y0, y1, None],
+            mode="lines",
+            line=dict(width=width, color="rgba(150,150,150,0.5)"),
+            hoverinfo="text",
+            text=f"{src} → {tgt}<br>lag={lag}, F={f_stat:.2f}, p={p_val:.4f}",
+            showlegend=False,
+        ))
+
+        # 箭頭
+        annotations.append(dict(
+            ax=x0, ay=y0, x=x1, y=y1,
+            xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True, arrowhead=2, arrowsize=1.5,
+            arrowwidth=width, arrowcolor="rgba(150,150,150,0.6)",
+        ))
+
+    # 節點
+    node_x, node_y, node_text, node_size, node_color = [], [], [], [], []
+    for node in graph.nodes:
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        degree = graph.degree(node)
+        node_text.append(f"{node}<br>degree={degree}")
+        node_size.append(max(15, degree * 5))
+        sector = sector_map.get(node, "其他")
+        node_color.append(sector_colors.get(sector, "#636EFA"))
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode="markers+text",
+        text=[n for n in graph.nodes],
+        textposition="top center",
+        textfont=dict(size=10),
+        marker=dict(size=node_size, color=node_color, line=dict(width=1, color="white")),
+        hovertext=node_text,
+        hoverinfo="text",
+        showlegend=False,
+    )
+
+    fig = go.Figure(data=edge_traces + [node_trace])
+    fig.update_layout(
+        annotations=annotations,
+        template="plotly_dark",
+        height=700,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+    return fig
