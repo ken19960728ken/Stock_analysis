@@ -35,6 +35,11 @@ from analysis.utils.supply_chain import (
     calc_chain_momentum,
     get_chain_names,
 )
+from analysis.utils.granger_chain import (
+    load_or_compute,
+    plot_causal_network,
+    discover_chains,
+)
 
 st.set_page_config(page_title="產業輪動", page_icon="🔄", layout="wide")
 st.title("🔄 產業輪動分析")
@@ -368,72 +373,133 @@ with tab3:
 
 # ===== Tab 4: 供應鏈分析 =====
 with tab4:
-    chain_names = get_chain_names()
-    selected_chain = st.selectbox("選擇供應鏈", chain_names)
+    chain_mode = st.radio(
+        "分析模式", ["手動定義", "自動發現（Granger 因果）"],
+        horizontal=True,
+    )
 
-    if selected_chain:
-        stages = SUPPLY_CHAIN[selected_chain]
-        st.caption(f"供應鏈順序（上游→下游）：{' → '.join(stages)}")
+    if chain_mode == "手動定義":
+        # === 原有手動供應鏈邏輯（完全不動）===
+        chain_names = get_chain_names()
+        selected_chain = st.selectbox("選擇供應鏈", chain_names)
 
-        # 供應鏈營收動能
-        chain_mom = calc_chain_momentum(
-            selected_chain, revenue_df, industry_map,
-            lookback_months=params["lookback_months"],
-        )
+        if selected_chain:
+            stages = SUPPLY_CHAIN[selected_chain]
+            arrow_sep = " → "
+            st.caption(f"供應鏈順序（上游→下游）：{arrow_sep.join(stages)}")
 
-        if not chain_mom.empty:
-            st.subheader("各環節營收動能")
-
-            # 供應鏈流程圖：水平 bar chart，按上下游順序排列
-            fig_chain = px.bar(
-                chain_mom,
-                y="sub_industry",
-                x="avg_yoy",
-                orientation="h",
-                color="avg_yoy",
-                color_continuous_scale=[[0, "#EF5350"], [0.5, "#757575"], [1, "#26A69A"]],
-                labels={"avg_yoy": "平均營收 YoY%", "sub_industry": "環節"},
-                text="avg_yoy",
+            # 供應鏈營收動能
+            chain_mom = calc_chain_momentum(
+                selected_chain, revenue_df, industry_map,
+                lookback_months=params["lookback_months"],
             )
-            fig_chain.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-            fig_chain.update_layout(
-                height=max(300, len(chain_mom) * 50),
-                template="plotly_dark",
-                yaxis=dict(categoryorder="array", categoryarray=list(reversed(stages))),
+
+            if not chain_mom.empty:
+                st.subheader("各環節營收動能")
+
+                fig_chain = px.bar(
+                    chain_mom,
+                    y="sub_industry",
+                    x="avg_yoy",
+                    orientation="h",
+                    color="avg_yoy",
+                    color_continuous_scale=[[0, "#EF5350"], [0.5, "#757575"], [1, "#26A69A"]],
+                    labels={"avg_yoy": "平均營收 YoY%", "sub_industry": "環節"},
+                    text="avg_yoy",
+                )
+                fig_chain.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                fig_chain.update_layout(
+                    height=max(300, len(chain_mom) * 50),
+                    template="plotly_dark",
+                    yaxis=dict(categoryorder="array", categoryarray=list(reversed(stages))),
+                )
+                st.plotly_chart(fig_chain, use_container_width=True)
+
+                display_mom = chain_mom[["sub_industry", "avg_yoy", "median_yoy", "stock_count"]].copy()
+                display_mom.columns = ["環節", "平均YoY%", "中位YoY%", "家數"]
+                display_mom["平均YoY%"] = display_mom["平均YoY%"].map(lambda x: f"{x:.1f}%")
+                display_mom["中位YoY%"] = display_mom["中位YoY%"].map(lambda x: f"{x:.1f}%")
+                st.dataframe(display_mom.reset_index(drop=True), use_container_width=True, hide_index=True)
+            else:
+                st.info("無足夠資料計算供應鏈動能。")
+
+            st.subheader("領先落後矩陣")
+            st.caption("正值 = 行領先列 N 個月，負值 = 行落後列 N 個月")
+
+            lead_lag = calc_chain_lead_lag(
+                selected_chain, revenue_df, industry_map,
+                periods=params["rotation_periods"],
             )
-            st.plotly_chart(fig_chain, use_container_width=True)
 
-            # 明細表
-            display_mom = chain_mom[["sub_industry", "avg_yoy", "median_yoy", "stock_count"]].copy()
-            display_mom.columns = ["環節", "平均YoY%", "中位YoY%", "家數"]
-            display_mom["平均YoY%"] = display_mom["平均YoY%"].map(lambda x: f"{x:.1f}%")
-            display_mom["中位YoY%"] = display_mom["中位YoY%"].map(lambda x: f"{x:.1f}%")
-            st.dataframe(display_mom.reset_index(drop=True), use_container_width=True, hide_index=True)
-        else:
-            st.info("無足夠資料計算供應鏈動能。")
+            if not lead_lag.empty:
+                fig_ll = px.imshow(
+                    lead_lag.values.astype(float),
+                    x=lead_lag.columns.tolist(),
+                    y=lead_lag.index.tolist(),
+                    text_auto=True,
+                    color_continuous_scale="RdBu",
+                    labels={"color": "領先月數"},
+                )
+                fig_ll.update_layout(
+                    height=max(350, len(lead_lag) * 50),
+                    template="plotly_dark",
+                )
+                st.plotly_chart(fig_ll, use_container_width=True)
+            else:
+                st.info("無足夠資料計算領先落後關係。")
 
-        # 領先落後矩陣
-        st.subheader("領先落後矩陣")
-        st.caption("正值 = 行領先列 N 個月，負值 = 行落後列 N 個月")
+    else:
+        # === 自動發現（Granger 因果）===
+        st.caption("使用 Granger 因果檢定自動偵測次產業間的營收連動關係")
 
-        lead_lag = calc_chain_lead_lag(
-            selected_chain, revenue_df, industry_map,
-            periods=params["rotation_periods"],
-        )
-
-        if not lead_lag.empty:
-            fig_ll = px.imshow(
-                lead_lag.values.astype(float),
-                x=lead_lag.columns.tolist(),
-                y=lead_lag.index.tolist(),
-                text_auto=True,
-                color_continuous_scale="RdBu",
-                labels={"color": "領先月數"},
+        gc_col1, gc_col2 = st.columns(2)
+        with gc_col1:
+            gc_max_lag = st.slider("最大滯後期數", 1, 6, 3,
+                                    help="Granger 檢定的最大 lag（月）")
+        with gc_col2:
+            gc_p_threshold = st.select_slider(
+                "顯著性門檻", options=[0.01, 0.05, 0.10], value=0.05,
+                help="p-value 門檻，越小越嚴格"
             )
-            fig_ll.update_layout(
-                height=max(350, len(lead_lag) * 50),
-                template="plotly_dark",
-            )
-            st.plotly_chart(fig_ll, use_container_width=True)
-        else:
-            st.info("無足夠資料計算領先落後關係。")
+
+        gc_run = st.button("執行 Granger 檢定", type="primary")
+
+        if gc_run:
+            with st.spinner("計算 Granger 因果檢定中（約 5-15 秒）..."):
+                pairs, graph = load_or_compute(
+                    revenue_df, industry_map,
+                    max_lag=gc_max_lag, p_threshold=gc_p_threshold,
+                )
+            st.session_state["gc_pairs"] = pairs
+            st.session_state["gc_graph"] = graph
+
+        if "gc_pairs" in st.session_state:
+            pairs = st.session_state["gc_pairs"]
+            graph = st.session_state["gc_graph"]
+
+            if pairs.empty:
+                st.info("在目前的參數下，無顯著的 Granger 因果關係。")
+            else:
+                node_count = len(graph.nodes)
+                edge_count = len(graph.edges)
+                st.subheader(f"因果網絡圖（{node_count} 個節點，{edge_count} 條邊）")
+                fig_network = plot_causal_network(graph, industry_map)
+                st.plotly_chart(fig_network, use_container_width=True)
+
+                st.subheader("顯著因果關係")
+                display_pairs = pairs.copy()
+                display_pairs["p_value"] = display_pairs["p_value"].map(lambda x: f"{x:.4f}")
+                display_pairs["f_stat"] = display_pairs["f_stat"].map(lambda x: f"{x:.2f}")
+                display_pairs.columns = ["來源（領先）", "目標（落後）", "滯後月數", "F-stat", "p-value"]
+                st.dataframe(display_pairs.reset_index(drop=True),
+                             use_container_width=True, hide_index=True)
+
+                chains = discover_chains(graph)
+                if chains:
+                    st.subheader("自動發現的供應鏈")
+                    for i, chain in enumerate(chains[:10], 1):
+                        chain_arrow = " → ".join(chain)
+                        chain_len = len(chain)
+                        st.write(f"**鏈 {i}**（{chain_len} 環節）：{chain_arrow}")
+                else:
+                    st.info("未發現長度 ≥ 3 的供應鏈路徑。")
