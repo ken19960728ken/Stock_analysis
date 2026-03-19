@@ -110,7 +110,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/6_市場總覽.py` | 全市場漲跌、法人、產業熱力圖、估值分佈 |
 | `analysis/pages/7_策略組合.py` | 多策略組合回測（4 種權重最佳化） |
 | `analysis/pages/8_因子分析.py` | IC 回測、因子相關性、有效性排行、動態權重 |
-| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 + 估值面 → 產業排名 + 供應鏈分析 |
+| `analysis/pages/9_產業輪動.py` | 營收動能 + 法人流向 + 估值面 → 產業排名 + 供應鏈分析 + Granger 因果自動發現 |
 | `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
@@ -130,6 +130,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/pair_trading.py` | 共整合、Z-Score、半衰期 |
 | `analysis/utils/peer_comparison.py` | 同業比較分析（同業查詢、指標比較、百分位排名） |
 | `analysis/utils/supply_chain.py` | 產業供應鏈連動分析（營收動能傳導、領先落後） |
+| `analysis/utils/granger_chain.py` | Granger 因果供應鏈自動發現（全配對檢定 + DAG + 網絡圖 + 快取） |
 
 #### 策略清單（22 個）
 
@@ -276,6 +277,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_peer_comparison.py` | 同業比較分析測試（get_peers、指標計算、百分位排名） |
 | `test_sub_industry_rotation.py` | 次產業輪動策略測試（訊號生成、最大持有天數、參數邊界） |
 | `test_supply_chain.py` | 供應鏈分析測試（營收動能、領先落後矩陣） |
+| `test_granger_chain.py` | Granger 因果供應鏈自動發現測試（12 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
