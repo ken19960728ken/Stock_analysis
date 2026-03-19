@@ -9,6 +9,7 @@ from analysis.utils.granger_chain import (
     granger_pairwise,
     build_causal_graph,
     discover_chains,
+    load_or_compute,
 )
 
 
@@ -148,3 +149,28 @@ class TestDiscoverChains:
         import networkx as nx
         chains = discover_chains(nx.DiGraph())
         assert chains == []
+
+
+class TestLoadOrCompute:
+    def test_computes_and_caches(self, sample_revenue_df, sample_industry_map, tmp_path):
+        cache_path = tmp_path / "granger_cache.json"
+        pairs, graph = load_or_compute(
+            sample_revenue_df, sample_industry_map,
+            cache_path=str(cache_path), max_lag=2, p_threshold=0.10,
+        )
+        assert isinstance(pairs, pd.DataFrame)
+        assert cache_path.exists()
+
+    def test_reads_from_cache(self, sample_revenue_df, sample_industry_map, tmp_path):
+        cache_path = tmp_path / "granger_cache.json"
+        # 第一次計算
+        pairs1, _ = load_or_compute(
+            sample_revenue_df, sample_industry_map,
+            cache_path=str(cache_path), max_lag=2, p_threshold=0.10,
+        )
+        # 第二次應從快取讀取（比較結果一致）
+        pairs2, _ = load_or_compute(
+            sample_revenue_df, sample_industry_map,
+            cache_path=str(cache_path), max_lag=2, p_threshold=0.10,
+        )
+        pd.testing.assert_frame_equal(pairs1, pairs2)

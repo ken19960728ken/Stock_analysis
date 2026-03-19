@@ -211,3 +211,58 @@ def discover_chains(graph: nx.DiGraph, min_length: int = 3) -> list[list[str]]:
             unique_chains.append(chain)
 
     return unique_chains
+
+
+_CACHE_TTL_SECONDS = 7 * 24 * 3600  # 7 天
+
+
+def load_or_compute(
+    revenue_df: pd.DataFrame,
+    industry_map: pd.DataFrame,
+    cache_path: str = "data_cache/granger_results.json",
+    max_lag: int = 3,
+    p_threshold: float = 0.05,
+    ttl: int = _CACHE_TTL_SECONDS,
+) -> tuple[pd.DataFrame, nx.DiGraph]:
+    """計算 Granger 因果關係，支援本地 JSON 快取
+
+    Args:
+        cache_path: 快取檔案路徑
+        ttl: 快取有效秒數（預設 7 天）
+
+    Returns:
+        (pairs_df, causal_graph)
+    """
+    cache_file = Path(cache_path)
+    cache_key = f"{max_lag}_{p_threshold}"
+
+    # 嘗試讀取快取
+    if cache_file.exists():
+        age = time.time() - cache_file.stat().st_mtime
+        if age < ttl:
+            try:
+                with open(cache_file) as f:
+                    cached = json.load(f)
+                if cached.get("cache_key") == cache_key:
+                    pairs = pd.DataFrame(cached["pairs"])
+                    graph = build_causal_graph(pairs)
+                    return pairs, graph
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    # 計算
+    series = build_industry_series(revenue_df, industry_map)
+    pairs = granger_pairwise(series, max_lag=max_lag, p_threshold=p_threshold)
+    graph = build_causal_graph(pairs)
+
+    # 寫入快取
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_data = {
+        "cache_key": cache_key,
+        "computed_at": time.time(),
+        "pairs": pairs.to_dict(orient="records") if not pairs.empty else [],
+    }
+    with open(cache_file, "w") as f:
+        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+
+    return pairs, graph
