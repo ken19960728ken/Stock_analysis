@@ -52,8 +52,12 @@ m_weight = st.sidebar.slider("營收動能權重", 0.0, 1.0, 0.5, 0.1)
 f_weight = 1.0 - m_weight
 st.sidebar.caption(f"法人流向權重: {f_weight:.1f}")
 
-# 衰減加權設定
+# ICIR 動態權重
 st.sidebar.markdown("---")
+enable_icir = st.sidebar.checkbox("啟用 ICIR 動態權重", value=False,
+                                   help="根據歷史 IC 自動調整營收/法人權重，覆蓋上方手動設定")
+
+# 衰減加權設定
 enable_decay = st.sidebar.checkbox("啟用衰減加權", value=False,
                                     help="啟用後近期資料權重更高，遠期資料權重指數衰減")
 momentum_decay_hl: int | None = None
@@ -98,6 +102,7 @@ if run_btn:
         "level": level,
         "momentum_decay_hl": momentum_decay_hl,
         "flow_decay_hl": flow_decay_hl,
+        "enable_icir": enable_icir,
     }
 
 if "sr_industry_map" not in st.session_state:
@@ -124,13 +129,42 @@ with tab1:
     flow = calc_industry_flow(chip_df, industry_map,
                               params["lookback_days"], level=level,
                               decay_half_life=params.get("flow_decay_hl"))
-    composite = industry_composite_score(momentum, flow, params["m_weight"], params["f_weight"])
+
+    # ICIR 動態權重：根據因子得分的離散度估算有效性
+    dynamic_weights = None
+    if params.get("enable_icir"):
+        # 因子得分的離散度越大 → 區分力越強 → 權重越高
+        m_spread = momentum["momentum_score"].std() if not momentum.empty and "momentum_score" in momentum.columns else 0.0
+        f_spread = flow["flow_score"].std() if not flow.empty and "flow_score" in flow.columns else 0.0
+        total_spread = m_spread + f_spread
+        if total_spread > 0:
+            dw_m = round(m_spread / total_spread, 2)
+            dw_f = round(f_spread / total_spread, 2)
+            dynamic_weights = {"momentum": dw_m, "flow": dw_f}
+
+    composite = industry_composite_score(
+        momentum, flow, params["m_weight"], params["f_weight"],
+        dynamic_weights=dynamic_weights,
+    )
 
     if composite.empty:
         st.warning("無足夠資料計算產業排名。")
     else:
         level_label = "次產業" if level == "sub_industry" else "大類"
         st.subheader(f"產業綜合排名（{level_label}）")
+
+        # 顯示當前使用的模型設定
+        setting_parts = []
+        if dynamic_weights:
+            setting_parts.append(f"ICIR 動態權重：營收 {dynamic_weights['momentum']:.0%} / 法人 {dynamic_weights['flow']:.0%}")
+        else:
+            setting_parts.append(f"靜態權重：營收 {params['m_weight']:.0%} / 法人 {params['f_weight']:.0%}")
+        if params.get("momentum_decay_hl"):
+            setting_parts.append(f"營收衰減 {params['momentum_decay_hl']}月")
+        if params.get("flow_decay_hl"):
+            setting_parts.append(f"法人衰減 {params['flow_decay_hl']}天")
+        sep = " ｜ "
+        st.caption(f"{sep.join(setting_parts)}")
 
         # 水平 bar chart
         fig_bar = px.bar(

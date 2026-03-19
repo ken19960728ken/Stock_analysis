@@ -25,7 +25,7 @@
 - [x] 市場總覽（全市場漲跌、法人動向、估值分佈、FRED 經濟指標）
 - [x] 多策略組合回測（4 種權重最佳化：等權/Sharpe最大化/最小波動率/風險平價）
 - [x] 因子分析（IC 回測、因子相關性、有效性排行、動態權重追蹤）
-- [x] 產業輪動模型（營收動能 + 法人流向 → 產業排名 + 供應鏈分析）
+- [x] 產業輪動模型（營收動能 + 法人流向 → 產業排名 + 13 條供應鏈分析 + 指數衰減加權 + ICIR 動態權重）
 - [x] 事件研究（除息/財報事件 CAR/AAR 分析 + 事件策略回測）
 - [x] 機器學習選股（LightGBM + Walk-Forward 回測）
 - [x] 報告瀏覽（Markdown 渲染 + CSV 表格 + 下載）
@@ -39,7 +39,8 @@
 ### 雲端部署（GCP Cloud Run）
 - [x] Pipeline Job（每日抓資料 + 選股報告，跑完自動停止）
 - [x] Analysis Service（Streamlit 前端，按需 scale 0-2 instances）
-- [x] Cloud Scheduler 自動排程（週一至五 17:00 UTC+8）
+- [x] Cloud Scheduler 自動排程（週一至五 18:30/18:40 UTC+8）
+- [x] GCP Secret Manager 整合（敏感變數加密儲存）
 - [x] 同一 repo + 兩個 Dockerfile + 不同 entrypoint
 
 ### 監控
@@ -100,8 +101,9 @@ uv run python main.py --scanner industry       # 產業分類（兩層：大類 
 uv run python main.py --scanner all            # 依序執行全部 scanner
 
 # === 每日更新（批量模式，< 1 分鐘） ===
-uv run python main.py --daily                  # 手動執行今日更新（價格 + 籌碼）
-uv run python main.py --daily-schedule         # 常駐排程：每天 17:00 UTC+8 自動更新 + 選股報告
+uv run python main.py --daily                  # 手動執行今日更新（資料抓取 + 選股報告）
+uv run python main.py --daily-data             # 僅資料抓取（價格 + 籌碼 + 估值面）
+uv run python main.py --daily-report           # 僅選股報告 + Email 推送
 
 # === 每日選股報告 ===
 uv run python main.py --pick-stocks                         # 每日選股報告（Top 20）
@@ -135,6 +137,7 @@ uv run python main.py --scanner chip --budget 50  # 限制 FinMind API 預算
 # 快速部署（需先安裝 gcloud CLI + Docker）
 source .env.deploy                    # 載入 GCP 專案設定
 bash deploy/setup.sh                  # 初始化 GCP（只需一次）
+bash deploy/setup-secrets.sh          # 建立 Secret Manager Secrets（只需一次）
 bash deploy/deploy-pipeline.sh        # 部署 Pipeline Job
 bash deploy/deploy-analysis.sh        # 部署 Analysis Service
 bash deploy/setup-scheduler.sh        # 設定排程（只需一次）
@@ -233,6 +236,7 @@ Stock_analysis/
 │   └── scrape_sub_industry.py     # HiStock 次產業分類爬蟲
 ├── deploy/                        # 雲端部署
 │   ├── setup.sh                   # GCP 專案初始化
+│   ├── setup-secrets.sh           # Secret Manager Secrets 建立
 │   ├── deploy-pipeline.sh         # 部署 Pipeline Job
 │   ├── deploy-analysis.sh         # 部署 Analysis Service
 │   ├── setup-scheduler.sh         # Cloud Scheduler 排程
@@ -313,7 +317,7 @@ Stock_analysis/
 - **機器學習** — LightGBM, scikit-learn
 - **統計分析** — statsmodels, scipy
 - **監控儀表板** — FastAPI, Uvicorn, Chart.js
-- **雲端部署** — GCP Cloud Run (Job + Service) + Cloud Scheduler + Artifact Registry
+- **雲端部署** — GCP Cloud Run (Job + Service) + Cloud Scheduler + Artifact Registry + Secret Manager
 - **容器化** — Docker（兩個 Dockerfile，amd64 交叉建置）
 - **測試** — pytest（756 個測試）
 

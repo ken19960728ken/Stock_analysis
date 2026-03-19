@@ -314,6 +314,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 - 執行重大操作（如切換功能、部署）前，先 git commit 並 push 當前改動。
 - 修改 `main.py` 或 `core/` 模組後，需重新部署 Cloud Run Job（`bash deploy/deploy-pipeline.sh`），否則不會載入新程式碼。
+- **修改 `analysis/` 相關程式碼後，必須依序完成以下三步**：
+  1. 更新對應文件（`analysis/documents/` 下的模型文件 + `README.md` 中的相關描述）
+  2. 更新 `CLAUDE.md`（如有架構、策略、頁面等變動）
+  3. 重新部署 Analysis Service（`bash deploy/deploy-analysis.sh`），否則線上版本不會更新
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
