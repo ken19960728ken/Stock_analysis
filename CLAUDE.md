@@ -166,9 +166,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `Dockerfile.analysis` | Cloud Run Service 映像（Streamlit 分析平台） |
 | `.dockerignore` | Docker 建置排除清單 |
 | `.streamlit/config.toml` | Streamlit 雲端配置（headless, 0.0.0.0:8501） |
-| `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry） |
-| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report 兩個 Job（amd64 交叉建置） |
-| `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（amd64 交叉建置） |
+| `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry + Secret Manager） |
+| `deploy/setup-secrets.sh` | 建立 Secret Manager Secrets（從 .env 讀取 4 個敏感值 + 授權 SA） |
+| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report 兩個 Job（Secret Manager 注入敏感變數） |
+| `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（Secret Manager 注入敏感變數） |
 | `deploy/setup-scheduler.sh` | Cloud Scheduler 雙排程（stock-data 18:30 + stock-report 18:40 UTC+8） |
 | `deploy/部署流程.md` | 完整部署文件（含環境版本 + 踩坑紀錄） |
 
@@ -279,7 +280,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ### Configuration
 
-- **`.env`** — Must contain `SUPABASE_URL` (PostgreSQL connection string). Optionally `FINMIND_TOKEN` (JWT for higher API rate limits). Optionally `FRED_API_KEY` (FRED API key for economic indicators on 市場總覽 page; get one at https://fred.stlouisfed.org/docs/api/api_key.html). Email 通知需設定 `EMAIL_SENDER`、`EMAIL_APP_PASSWORD`（Gmail 應用程式密碼）、`EMAIL_RECIPIENTS`（逗號分隔多收件人）。若需透過代理連線 SMTP 可設 `EMAIL_PROXY`（如 `http://127.0.0.1:7890`）。
+- **`.env`** — 本地開發用，含 `SUPABASE_URL`、`FINMIND_TOKEN`、`EMAIL_APP_PASSWORD`、`FRED_API_KEY` 等。Cloud Run 部署時敏感值由 GCP Secret Manager 注入（`deploy/setup-secrets.sh`），非敏感值由 YAML 環境變數檔傳入。Email 通知需設定 `EMAIL_SENDER`、`EMAIL_APP_PASSWORD`、`EMAIL_RECIPIENTS`（逗號分隔多收件人）。若需透過代理連線 SMTP 可設 `EMAIL_PROXY`（如 `http://127.0.0.1:7890`）。
 - **Python 3.11** required (`.python-version` and `pyproject.toml`).
 - **`pyproject.toml` optional-dependencies** — `pipeline`（finmind/yfinance/tqdm/twstock）、`analysis`（streamlit/fredapi）、`dashboard`（fastapi/uvicorn）、`all`（全部）。本地開發用 `uv sync --extra all`，Docker 各自安裝對應 extra。
 - **`DB_POOL_SIZE`** / **`DB_POOL_OVERFLOW`** — 可選環境變數，控制 SQLAlchemy 連線池大小（預設 5/3，Cloud Run 建議 3/2）。
