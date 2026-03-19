@@ -104,7 +104,7 @@ class ParabolicSARStrategy(Strategy):
         adx = self._calc_adx(df, adx_period)
         strong_trend = adx > adx_threshold
 
-        df.loc[bull_signal & strong_trend, "signal"] = 1
-        df.loc[bear_signal & strong_trend, "signal"] = -1
+        df.loc[bull_signal & strong_trend, "signal"] = 1   # 買入需趨勢確認
+        df.loc[bear_signal, "signal"] = -1                   # 賣出不受 ADX 限制（確保止損）
 
         return df

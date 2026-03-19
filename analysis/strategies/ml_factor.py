@@ -32,35 +32,35 @@ class MLFactorStrategy(Strategy):
             df.loc[df["pred_label"] == sell_q, "signal"] = -1
             return df
 
-        # 簡化邏輯：RSI + MACD + 成交量的組合訊號
+        # 簡化邏輯：RSI + MACD + 成交量的連續分數組合
         df["signal"] = 0
         if len(df) < 30:
             return df
 
-        # RSI
+        # RSI — Wilder smoothing（與 indicators.py 一致）
         delta = df["close"].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = (-delta.clip(upper=0)).rolling(14).mean()
-        rs = gain / loss.replace(0, np.nan)
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        avg_gain = gain.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
         rsi = 100 - 100 / (1 + rs)
 
         # MACD
-        ema12 = df["close"].ewm(span=12).mean()
-        ema26 = df["close"].ewm(span=26).mean()
-        macd_hist = (ema12 - ema26) - (ema12 - ema26).ewm(span=9).mean()
+        ema12 = df["close"].ewm(span=12, adjust=False).mean()
+        ema26 = df["close"].ewm(span=26, adjust=False).mean()
+        macd_hist = (ema12 - ema26) - (ema12 - ema26).ewm(span=9, adjust=False).mean()
 
         # 成交量比
         vol_ratio = df["volume"] / df["volume"].rolling(20).mean()
 
-        # 綜合分數
+        # 連續分數（非二元），消除因子間矛盾
         score = pd.Series(0.0, index=df.index)
-        score += (rsi < 30).astype(float) * 0.4
-        score += (macd_hist > 0).astype(float) * 0.3
-        score += (vol_ratio > 1.5).astype(float) * 0.3
-        score -= (rsi > 70).astype(float) * 0.4
-        score -= (macd_hist < 0).astype(float) * 0.3
+        score += ((50 - rsi) / 50).clip(-1, 1) * 0.4
+        score += np.sign(macd_hist) * 0.3
+        score += (vol_ratio - 1).clip(-1, 1) * 0.3
 
-        df.loc[score >= 0.6, "signal"] = 1
-        df.loc[score <= -0.4, "signal"] = -1
+        df.loc[score >= 0.3, "signal"] = 1
+        df.loc[score <= -0.3, "signal"] = -1
 
         return df

@@ -774,3 +774,65 @@ class TestMLFactorStrategy:
         result = s.generate_signals(df)
         assert result.loc[df["pred_label"] == 4, "signal"].eq(1).all()
         assert result.loc[df["pred_label"] == 0, "signal"].eq(-1).all()
+
+    def test_wilder_rsi_consistency(self, sample_stock_id):
+        """簡化邏輯的 RSI 應與 indicators.py add_rsi 使用相同 Wilder 平滑法"""
+        from analysis.utils.indicators import add_rsi
+
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=60, freq="B")
+        close = 500 + np.cumsum(np.random.randn(60) * 5)
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 1, "high": close + 3, "low": close - 3,
+            "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 60),
+        })
+
+        # 從 indicators.py 計算 RSI
+        df_ind = add_rsi(df.copy(), period=14)
+        rsi_indicator = df_ind["RSI"]
+
+        # 從 ml_factor 內部邏輯重現 RSI
+        delta = df["close"].diff()
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        avg_gain = gain.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi_ml = 100 - 100 / (1 + rs)
+
+        # 跳過前 14 個 NaN，驗證兩者一致
+        valid = rsi_indicator.dropna().index
+        pd.testing.assert_series_equal(
+            rsi_ml.loc[valid], rsi_indicator.loc[valid],
+            check_names=False, atol=1e-10,
+        )
+
+
+class TestParabolicSARSellWithoutADX:
+    """Parabolic SAR 賣出不受 ADX 過濾"""
+
+    def test_sell_signal_without_adx_filter(self, sample_stock_id):
+        """高 ADX 閾值下，買入被擋但賣出仍觸發"""
+        np.random.seed(42)
+        dates = pd.date_range("2023-01-01", periods=60, freq="B")
+        # 先漲後跌，確保 SAR 有反轉機會
+        close = np.concatenate([
+            np.linspace(480, 560, 30),
+            np.linspace(558, 470, 30),
+        ])
+        noise = np.random.randn(60) * 2
+        close = close + noise
+        df = pd.DataFrame({
+            "date": dates, "stock_id": sample_stock_id,
+            "open": close - 2, "high": close + 5, "low": close - 5,
+            "close": close, "volume": np.random.randint(20_000_000, 40_000_000, 60),
+        })
+        s = ParabolicSARStrategy()
+        # 極高 ADX 閾值：買入幾乎不會觸發，但賣出應不受限
+        s.set_params(adx_threshold=99)
+        result = s.generate_signals(df)
+        # 買入應被 ADX 擋住
+        assert not (result["signal"] == 1).any()
+        # 賣出不受 ADX 限制，應有觸發
+        assert (result["signal"] == -1).any()

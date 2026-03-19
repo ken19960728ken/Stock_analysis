@@ -128,6 +128,28 @@ class TestFreeCashFlowStrategy:
         result = s.generate_signals(df)
         assert set(result["signal"].unique()).issubset({-1, 0, 1})
 
+    def test_fcf_with_capex(self, sample_fundamental_wide):
+        """有 CapEx 欄位時，FCF = OCF - CapEx，yield 降低可能不觸發 buy"""
+        df = sample_fundamental_wide.copy()
+        df["market_value"] = 1e12
+        # CapEx 接近 OCF，使 FCF ≈ 0 → yield ≈ 0% → 不達標
+        df["CapitalExpenditure"] = -df["CashFlowsFromOperatingActivities"] * 0.95
+        s = FreeCashFlowStrategy()
+        s.set_params(fcf_yield_threshold=5.0)
+        result = s.generate_signals(df)
+        # FCF yield ≈ 0.5-0.7%，遠低於 5% 門檻 → 不應有 buy
+        assert not (result["signal"] == 1).any()
+
+    def test_fcf_without_capex_backward_compatible(self, sample_fundamental_wide):
+        """無 CapEx 欄位時，FCF = OCF（向後相容）"""
+        df = sample_fundamental_wide.copy()
+        df["market_value"] = 1e12
+        s = FreeCashFlowStrategy()
+        s.set_params(fcf_yield_threshold=5.0)
+        result = s.generate_signals(df)
+        # OCF = 1.2e11..1.4e11, MV = 1e12, yield = 12-14% → 應有 buy
+        assert (result["signal"] == 1).any()
+
 
 # ============================================================================
 # TestMarginSignalStrategy

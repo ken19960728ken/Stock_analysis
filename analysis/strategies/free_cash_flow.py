@@ -17,7 +17,7 @@ class FreeCashFlowStrategy(Strategy):
         df = data.copy()
         df["signal"] = 0
 
-        # 偵測營運現金流欄位（擴大搜尋範圍）
+        # 偵測營運現金流欄位
         ocf_col = None
         for c in df.columns:
             cl = c.lower()
@@ -25,26 +25,21 @@ class FreeCashFlowStrategy(Strategy):
                 ocf_col = c
                 break
 
-        # Fallback: 用 NetIncome 作為 OCF 近似值
-        if ocf_col is None:
-            for c in df.columns:
-                cl = c.lower()
-                if any(k in cl for k in ["netincome", "net_income", "稅後淨利"]):
-                    ocf_col = c
-                    break
-
-        # 再 Fallback: 用營業利益
-        if ocf_col is None:
-            for c in df.columns:
-                cl = c.lower()
-                if any(k in cl for k in ["operatingincome", "operating_income", "營業利益"]):
-                    ocf_col = c
-                    break
-
         if ocf_col is None:
             return df
 
         ocf = pd.to_numeric(df[ocf_col], errors="coerce")
+
+        # 偵測 CapEx 欄位：FCF = OCF - CapEx（Jensen 1986）
+        capex_col = None
+        for c in df.columns:
+            cl = c.lower()
+            if any(k in cl for k in ["capitalexpenditure", "capex", "資本支出"]):
+                capex_col = c
+                break
+
+        capex = pd.to_numeric(df[capex_col], errors="coerce").abs() if capex_col else 0
+        fcf = ocf - capex
 
         # 偵測市值欄位（用於計算 FCF Yield）
         mv_col = None
@@ -55,7 +50,7 @@ class FreeCashFlowStrategy(Strategy):
 
         if mv_col is not None:
             mv = pd.to_numeric(df[mv_col], errors="coerce")
-            fcf_yield = ocf / mv.replace(0, float("nan")) * 100
+            fcf_yield = fcf / mv.replace(0, float("nan")) * 100
 
             if self.params["ocf_positive_required"]:
                 condition = (ocf > 0) & (fcf_yield >= self.params["fcf_yield_threshold"])
