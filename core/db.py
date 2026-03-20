@@ -19,6 +19,7 @@ VALID_TABLES = frozenset({
     "month_revenue", "stock_per", "market_value",
     "industry_mapping", "industry_classification", "scan_progress",
     "recommendation_history",  # 選股推薦追蹤
+    "scanner_run_log",         # Scanner 執行日誌
 })
 
 
