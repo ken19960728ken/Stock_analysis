@@ -30,6 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from analysis.strategies import STRATEGY_MAP
 from analysis.utils.peer_comparison import calc_peer_percentile, get_peers
+from core.constants import apply_publication_delay
 from core.db import get_engine, safe_read_sql, save_to_db
 from core.logger import setup_logger
 
@@ -291,14 +292,18 @@ def _enrich_from_cache(df: pd.DataFrame, stock_id: str, strategy_name: str,
                 if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
                     keep_set.add(c)
             extra = extra[[c for c in extra.columns if c in keep_set]]
-            df = df.merge(extra, on="date", how="left")
+            extra = extra.sort_values("date")
+            extra = apply_publication_delay(extra, "chip_institutional")
+            df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "stock_per":
             extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            extra = apply_publication_delay(extra, "stock_per")
             df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "month_revenue":
             extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            extra = apply_publication_delay(extra, "month_revenue")
             df = pd.merge_asof(df, extra, on="date", direction="backward")
 
     return df
@@ -528,14 +533,18 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                 if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
                     keep_set.add(c)
             extra = extra[[c for c in extra.columns if c in keep_set]]
-            df = df.merge(extra, on="date", how="left")
+            extra = extra.sort_values("date")
+            extra = apply_publication_delay(extra, "chip_institutional")
+            df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "stock_per":
             extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            extra = apply_publication_delay(extra, "stock_per")
             df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "month_revenue":
             extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            extra = apply_publication_delay(extra, "month_revenue")
             df = pd.merge_asof(df, extra, on="date", direction="backward")
 
     return df
