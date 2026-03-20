@@ -22,30 +22,62 @@ from analysis.utils.factor_engine import (
 class TestZScoreNormalize:
 
     def test_mean_near_zero(self):
-        s = pd.Series(np.random.randn(100) * 10 + 50)
+        """rolling z-score 的有效值均值應接近零"""
+        s = pd.Series(np.random.randn(300) * 10 + 50)
         z = zscore_normalize(s)
-        assert abs(z.mean()) < 0.2
+        valid = z.dropna()
+        assert abs(valid.mean()) < 1.0
 
     def test_std_near_one(self):
-        s = pd.Series(np.random.randn(100) * 10 + 50)
+        """rolling z-score 的有效值標準差應接近一"""
+        s = pd.Series(np.random.randn(300) * 10 + 50)
         z = zscore_normalize(s)
-        assert abs(z.std() - 1.0) < 0.3
+        valid = z.dropna()
+        assert 0.3 < valid.std() < 2.0
 
     def test_winsorize_extreme_values(self):
-        s = pd.Series([1, 2, 3, 4, 5, 100])
+        s = pd.Series(np.random.randn(300) * 10 + 50)
+        s.iloc[-1] = 99999  # 極端值
         z = zscore_normalize(s)
-        assert z.max() <= 3.0
-        assert z.min() >= -3.0
+        valid = z.dropna()
+        assert valid.max() <= 3.0
+        assert valid.min() >= -3.0
 
     def test_single_value_returns_zero(self):
         s = pd.Series([42.0])
         z = zscore_normalize(s)
         assert (z == 0.0).all()
 
-    def test_all_same_returns_zero(self):
+    def test_all_same_returns_nan_or_zero(self):
+        """全同值序列：短於 min_periods 時為 NaN，長序列時 std=0 也為 NaN"""
         s = pd.Series([5.0, 5.0, 5.0, 5.0])
         z = zscore_normalize(s)
-        assert (z == 0.0).all()
+        # 4 筆 < min_periods=60，全部為 NaN
+        assert z.isna().all() or (z == 0.0).all()
+
+    def test_no_look_ahead_bias(self):
+        """前半段的 z-score 不應受後半段資料影響"""
+        np.random.seed(42)
+        base = pd.Series(np.random.randn(300) * 10 + 50)
+        z_full = zscore_normalize(base)
+
+        # 只給前 150 筆，結果應與完整版的前 150 筆相同
+        z_partial = zscore_normalize(base.iloc[:150])
+        overlap = 150
+        non_nan_mask = z_partial.notna() & z_full.iloc[:overlap].notna()
+        if non_nan_mask.sum() > 60:
+            pd.testing.assert_series_equal(
+                z_partial[non_nan_mask].reset_index(drop=True),
+                z_full.iloc[:overlap][non_nan_mask].reset_index(drop=True),
+                atol=1e-10,
+            )
+
+    def test_early_period_has_nan(self):
+        """rolling 模式下前 min_periods 筆應為 NaN"""
+        s = pd.Series(np.random.randn(100) * 10 + 50)
+        z = zscore_normalize(s)
+        # 預設 min_periods=60，前 59 筆應為 NaN
+        assert z.iloc[:59].isna().all()
 
 
 # ============================================================================

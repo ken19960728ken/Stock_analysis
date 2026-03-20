@@ -8,15 +8,32 @@ import pandas as pd
 from scipy import stats
 
 
-def zscore_normalize(series: pd.Series) -> pd.Series:
-    """Z-Score 標準化（單股時序）。Winsorize 到 [-3, 3]"""
-    s = series.dropna()
-    if len(s) <= 1 or s.std() == 0:
+def zscore_normalize(series: pd.Series, window: int = 252,
+                     min_periods: int = 60) -> pd.Series:
+    """Z-Score 標準化（單股時序，rolling 模式避免前視偏差）。
+
+    使用 rolling 窗口計算均值和標準差，確保每個時間點只使用
+    過去的資料進行標準化。Winsorize 到 [-3, 3]。
+
+    Parameters
+    ----------
+    series : pd.Series
+        原始因子值
+    window : int
+        rolling 窗口大小（預設 252 = 一年交易日）
+    min_periods : int
+        最少需要的觀測值（預設 60 = 約三個月）
+    """
+    if series.dropna().empty or len(series.dropna()) <= 1:
         return pd.Series(0.0, index=series.index)
 
-    mean = s.mean()
-    std = s.std()
-    z = (series - mean) / std
+    rolling_mean = series.rolling(window=window, min_periods=min_periods).mean()
+    rolling_std = series.rolling(window=window, min_periods=min_periods).std()
+
+    # 避免除以零
+    safe_std = rolling_std.replace(0, np.nan)
+    z = (series - rolling_mean) / safe_std
+
     return z.clip(-3, 3)
 
 
