@@ -44,6 +44,7 @@ CONSTRAINTS = [
     ("financial_reports", "uq_financial_reports", "stock_id, date, type"),
     ("dividend_history", "uq_dividend_history", "stock_id, date, dividend"),
     ("industry_classification", "uq_industry_classification", "stock_id"),
+    ("recommendation_history", "uq_recommendation_history", "report_date, stock_id"),
 ]
 
 

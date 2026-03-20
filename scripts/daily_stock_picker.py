@@ -75,6 +75,7 @@ LOOKBACK_TRADE_DAYS = 60  # 載入最近 N 交易日資料
 VALID_TABLES = frozenset({
     "daily_price", "chip_institutional", "stock_per", "month_revenue",
     "twstock_code", "industry_classification",
+    "recommendation_history",  # 選股推薦追蹤
 })
 
 

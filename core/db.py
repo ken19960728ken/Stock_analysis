@@ -18,6 +18,7 @@ VALID_TABLES = frozenset({
     "chip_holding_pct", "chip_securities_lending", "chip_short_sale",
     "month_revenue", "stock_per", "market_value",
     "industry_mapping", "industry_classification", "scan_progress",
+    "recommendation_history",  # 選股推薦追蹤
 })
 
 
