@@ -32,7 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from analysis.strategies import STRATEGY_MAP
 from analysis.utils.backtester import Backtester
 from analysis.utils.charts import create_equity_curve
-from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
+from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR, apply_publication_delay
 from core.db import get_engine, safe_read_sql
 from core.logger import setup_logger
 
@@ -216,13 +216,17 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                     if (c.endswith("_buy") or c.endswith("_sell")) and c != "institutional_net_buy":
                         keep_set.add(c)
                 extra = extra[[c for c in extra.columns if c in keep_set]]
-                df = df.merge(extra, on="date", how="left")
+                extra = extra.sort_values("date")
+                extra = apply_publication_delay(extra, "chip_institutional")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "chip_margin":
             extra = load_chip_margin(engine, stock_id, start_date)
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
-                df = df.merge(extra, on="date", how="left")
+                extra = extra.sort_values("date")
+                extra = apply_publication_delay(extra, "chip_margin")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "chip_holding_pct":
             extra = load_chip_holding_pct(engine, stock_id, start_date)
@@ -236,6 +240,7 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                     shareholder_count=("people", "sum"),
                     holding_percentage=("percent", "sum"),
                 ).reset_index().sort_values("date")
+                agg = apply_publication_delay(agg, "chip_holding_pct")
                 df = pd.merge_asof(df, agg, on="date", direction="backward")
 
         elif table == "financial_reports":
@@ -246,6 +251,7 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                 ).reset_index()
                 pivoted.columns.name = None
                 pivoted = pivoted.sort_values("date")
+                pivoted = apply_publication_delay(pivoted, "financial_reports")
                 df = pd.merge_asof(df, pivoted, on="date", direction="backward")
 
         elif table == "market_value":
@@ -253,6 +259,7 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
             if not extra.empty:
                 mv_cols = ["date"] + [c for c in extra.columns if c not in ("date", "stock_id")]
                 extra = extra[mv_cols].sort_values("date")
+                extra = apply_publication_delay(extra, "market_value")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "stock_per":
@@ -260,12 +267,14 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore")
                 extra = extra.sort_values("date")
+                extra = apply_publication_delay(extra, "stock_per")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "month_revenue":
             extra = load_month_revenue(engine, stock_id, start_date)
             if not extra.empty:
                 extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+                extra = apply_publication_delay(extra, "month_revenue")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
 
         elif table == "dividend_history":
