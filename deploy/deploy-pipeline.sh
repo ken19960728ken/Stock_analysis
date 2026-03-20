@@ -11,10 +11,21 @@ set -euo pipefail
 PROJECT_ID="${GCP_PROJECT_ID:?請設定 GCP_PROJECT_ID 環境變數}"
 REGION="${GCP_REGION:-asia-east1}"
 REPO_NAME="${AR_REPO_NAME:-stock-analysis}"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/stock-pipeline:latest"
+IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/stock-pipeline"
+
+# 從 pyproject.toml 讀取版本號
+VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+GIT_SHA=$(git rev-parse --short HEAD)
+IMAGE_TAG="${VERSION}-${GIT_SHA}"
 
 echo "=== 建置 Pipeline Docker 映像 (linux/amd64) ==="
-docker buildx build --platform linux/amd64 -f Dockerfile.pipeline -t "$IMAGE" --push .
+echo "版本: ${VERSION} | Git SHA: ${GIT_SHA} | 標籤: ${IMAGE_TAG}"
+docker buildx build --platform linux/amd64 -f Dockerfile.pipeline \
+    -t "${IMAGE_BASE}:${IMAGE_TAG}" \
+    -t "${IMAGE_BASE}:latest" \
+    --push .
+
+IMAGE="${IMAGE_BASE}:${IMAGE_TAG}"
 
 echo "=== 產生環境變數檔（僅非敏感值） ==="
 ENV_FILE=$(mktemp /tmp/pipeline-env-XXXXXX.yaml)
@@ -71,6 +82,9 @@ deploy_job "stock-report" "2Gi" "2" "1800s" \
     "--daily-report"
 
 echo "=== 完成 ==="
+echo "版本: ${VERSION} | 映像標籤: ${IMAGE_TAG}"
 echo "手動觸發:"
 echo "  gcloud run jobs execute stock-data --region=$REGION --project=$PROJECT_ID"
 echo "  gcloud run jobs execute stock-report --region=$REGION --project=$PROJECT_ID"
+echo "回滾方式:"
+echo "  gcloud run jobs update stock-data --image=${IMAGE_BASE}:<舊版標籤> --region=$REGION --project=$PROJECT_ID"
