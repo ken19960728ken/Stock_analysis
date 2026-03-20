@@ -204,6 +204,25 @@ def run_daily_data():
     is_trading_day = DailyUpdater().run()
     if not is_trading_day:
         logger.info("非交易日，跳過資料更新")
+        return is_trading_day
+
+    # 資料健檢 + 告警
+    try:
+        from core.health_check import run_health_check, format_alert_body
+        from core.notifier import send_alert_email
+        result = run_health_check()
+        logger.info(f"資料健檢: {result.overall_status} ({len(result.checks)} 項)")
+        if result.overall_status != "healthy":
+            alerts = [c for c in result.checks if c["status"] not in ("ok", "info")]
+            body = format_alert_body(alerts)
+            send_alert_email(
+                subject=f"資料健檢 — {result.overall_status}",
+                body=body,
+                severity="warning" if result.overall_status == "degraded" else "critical",
+            )
+    except Exception as e:
+        logger.error(f"資料健檢失敗（不影響主流程）: {e}")
+
     return is_trading_day
 
 
