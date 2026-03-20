@@ -360,6 +360,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
   2. 更新 `CLAUDE.md`（如有架構、策略、頁面等變動）
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - **改動程式碼後必須主動同步所有相關 .md 文件，不等使用者提醒，且不可遺漏**。完整的「程式碼變更 → 文件同步」對應規則記錄在 auto memory 的 `doc-sync-rules.md`，每次改動前先查閱。數字常量（策略數、測試數、頁面數）改動後必須 grep 確認所有出處。
+- **資料夾/檔案結構變更**（搬移、重新命名、拆分、合併）後，必須用 `grep -rn "舊路徑" --include="*.md" --include="*.py"` 全專案搜尋殘留引用，逐一更新。同時更新 CLAUDE.md 架構描述、README、analysis/README 文件索引、`.gitignore`、doc-sync-rules.md 中的路徑。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
 - 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 22`），新增策略時需全域搜尋並更新所有相關斷言。
 
