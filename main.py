@@ -207,11 +207,40 @@ def run_daily_data():
 
 
 def run_daily_report():
-    """執行每日選股報告 + Email 推送。"""
+    """執行每日選股報告 + 推薦追蹤 + Email 推送。"""
     try:
-        from scripts.daily_stock_picker import run_daily_pick
+        from scripts.daily_stock_picker import scan_stocks, build_report, save_recommendations
+        from scripts.performance_tracker import backfill_performance, generate_performance_report
+
         logger.info("開始產出每日選股報告...")
-        report_path = run_daily_pick()
+
+        # 1. 掃描 + 產出報告
+        scan_result = scan_stocks()
+        if scan_result is None:
+            logger.warning("選股掃描失敗")
+            return
+
+        report_path = build_report(scan_result)
+
+        # 2. 儲存推薦記錄到 DB（含版本指紋）
+        try:
+            save_recommendations(scan_result)
+        except Exception as e:
+            logger.error(f"推薦記錄儲存失敗（不影響報告）: {e}")
+
+        # 3. 回填歷史推薦績效
+        try:
+            backfill_performance()
+        except Exception as e:
+            logger.error(f"績效回填失敗（不影響報告）: {e}")
+
+        # 4. 產出績效追蹤報告
+        try:
+            generate_performance_report()
+        except Exception as e:
+            logger.error(f"績效追蹤報告產出失敗（不影響報告）: {e}")
+
+        # 5. Email 推送
         if report_path:
             logger.info(f"選股報告已產出: {report_path}")
             try:
