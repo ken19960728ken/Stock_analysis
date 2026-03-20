@@ -332,6 +332,21 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
   3. `bash deploy/release.sh [pipeline|analysis|both]`
   4. `git checkout develop`（回到開發分支繼續工作）
 
+### 策略研究規範
+
+新增或改進策略時，必須遵循以下流程：
+
+1. **標註學理來源**：明確區分每個策略構想的來源
+   - **有學理支持** → 列出具體論文/書籍（作者、年份、標題、期刊）
+   - **Claude 自行設計** → 明確標註「Claude 設計」，並說明設計動機與邏輯依據
+   - 禁止模糊帶過，每個策略都必須有明確的來源標註
+2. **基於參考資料設計方案**：從學理文獻中提取可執行的核心邏輯，轉化為具體的買賣條件、參數設計與回測方案，不可脫離文獻空想
+3. **完成實作後更新文件**：
+   - 在 `analysis/documents/3_策略回測/strategies/` 下建立對應策略子資料夾
+   - 撰寫 README.md（整合參數詳解 + 學理來源 + Code Review 記錄）
+   - 相關 PDF 論文存放在同一資料夾內
+   - 同步更新 `strategies/README.md` 索引、`CLAUDE.md` 策略清單、`CHANGELOG.md`
+
 ### 開發規範
 
 - 執行重大操作（如切換功能）前，先 git commit 並 push 當前改動。
