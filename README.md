@@ -146,7 +146,7 @@ bash deploy/setup-scheduler.sh        # 設定排程（只需一次）
 ### 運行測試
 
 ```bash
-uv run pytest tests/ -v    # 756 個測試
+uv run pytest tests/ -v    # 808 個測試
 ```
 
 ## 專案架構
@@ -250,7 +250,7 @@ Stock_analysis/
 ├── Dockerfile.analysis            # Cloud Run Service 映像
 ├── .dockerignore                  # Docker 排除清單
 ├── .streamlit/config.toml         # Streamlit 雲端配置
-├── tests/                         # 測試套件（756 個測試）
+├── tests/                         # 測試套件（808 個測試）
 ├── pyproject.toml                 # 專案設定（uv, optional-dependencies）
 └── .env                           # 環境變數（.gitignore）
 ```
@@ -319,7 +319,7 @@ Stock_analysis/
 - **監控儀表板** — FastAPI, Uvicorn, Chart.js
 - **雲端部署** — GCP Cloud Run (Job + Service) + Cloud Scheduler + Artifact Registry + Secret Manager
 - **容器化** — Docker（兩個 Dockerfile，amd64 交叉建置）
-- **測試** — pytest（756 個測試）
+- **測試** — pytest（808 個測試）
 
 ## 第三方服務
 

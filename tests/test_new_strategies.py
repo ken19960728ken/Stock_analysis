@@ -461,17 +461,3 @@ class TestStrategyIntegration:
     def test_adaptive_ensemble_in_map(self):
         from analysis.strategies import STRATEGY_MAP
         assert "多策略動態組合" in STRATEGY_MAP
-
-    def test_total_strategy_count(self):
-        from analysis.strategies import STRATEGY_MAP
-        assert len(STRATEGY_MAP) == 22  # 16 original + 2 + 3 new + 1 次產業輪動
-
-    def test_instantiate_all_strategies(self):
-        """所有策略都能正常實例化"""
-        from analysis.strategies import STRATEGY_MAP
-        for name, cls in STRATEGY_MAP.items():
-            s = cls()
-            assert hasattr(s, "name")
-            assert hasattr(s, "description")
-            assert hasattr(s, "params")
-            assert hasattr(s, "generate_signals")

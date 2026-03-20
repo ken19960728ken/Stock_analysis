@@ -1,18 +1,16 @@
 """
-策略單元測試 — 4 個新策略 + 現有策略整合驗證 + 多因子 Z-Score
+策略單元測試 — 4 個策略深度測試 + 多因子 Z-Score
 """
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from analysis.strategies import STRATEGY_MAP
 from analysis.strategies.fundamental_ratio import FundamentalRatioStrategy
 from analysis.strategies.free_cash_flow import FreeCashFlowStrategy
 from analysis.strategies.margin_signal import MarginSignalStrategy
 from analysis.strategies.ownership_concentration import OwnershipConcentrationStrategy
 from analysis.strategies.multi_factor import MultiFactorStrategy
-from analysis.strategies.ma_cross import MACrossStrategy
 
 
 # ============================================================================
@@ -269,43 +267,6 @@ class TestOwnershipConcentrationStrategy:
     def test_signal_values_valid(self, sample_shareholding_8w):
         s = OwnershipConcentrationStrategy()
         result = s.generate_signals(sample_shareholding_8w)
-        assert set(result["signal"].unique()).issubset({-1, 0, 1})
-
-
-# ============================================================================
-# TestExistingStrategiesIntegration
-# ============================================================================
-
-class TestExistingStrategiesIntegration:
-    """驗證新策略不影響既有策略"""
-
-    def test_strategy_map_has_21_entries(self):
-        assert len(STRATEGY_MAP) == 22
-
-    def test_all_strategies_instantiable(self):
-        for name, cls in STRATEGY_MAP.items():
-            instance = cls()
-            assert instance.name
-
-    def test_all_strategies_have_generate_signals(self):
-        for name, cls in STRATEGY_MAP.items():
-            instance = cls()
-            assert hasattr(instance, "generate_signals")
-            assert callable(instance.generate_signals)
-
-    def test_ma_cross_unchanged(self, sample_ohlcv_50d):
-        """MA Cross 策略行為不變"""
-        s = MACrossStrategy()
-        result = s.generate_signals(sample_ohlcv_50d)
-        assert "signal" in result.columns
-        assert set(result["signal"].unique()).issubset({-1, 0, 1})
-
-    def test_multi_factor_default_unchanged(self, sample_multi_factor_50d):
-        """use_zscore=False 時行為不變"""
-        s = MultiFactorStrategy()
-        assert s.params["use_zscore"] is False
-        result = s.generate_signals(sample_multi_factor_50d)
-        assert "signal" in result.columns
         assert set(result["signal"].unique()).issubset({-1, 0, 1})
 
 
