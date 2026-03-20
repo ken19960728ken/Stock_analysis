@@ -2,7 +2,7 @@
 
 本專案遵循 [Keep a Changelog](https://keepachangelog.com/) 格式與 [Semantic Versioning](https://semver.org/)。
 
-## [Unreleased]
+## [1.1.0] - 2026-03-20
 
 ### Added
 - **資料品質監控系統**：`scanner_run_log` DB 表記錄每次 scanner 執行結果（時間、成功/失敗數、耗時），BaseScanner 自動寫入
