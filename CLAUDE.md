@@ -341,11 +341,16 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
    - **Claude 自行設計** → 明確標註「Claude 設計」，並說明設計動機與邏輯依據
    - 禁止模糊帶過，每個策略都必須有明確的來源標註
 2. **基於參考資料設計方案**：從學理文獻中提取可執行的核心邏輯，轉化為具體的買賣條件、參數設計與回測方案，不可脫離文獻空想
-3. **完成實作後更新文件**：
-   - 在 `analysis/documents/3_策略回測/strategies/` 下建立對應策略子資料夾
-   - 撰寫 README.md（整合參數詳解 + 學理來源 + Code Review 記錄）
-   - 相關 PDF 論文存放在同一資料夾內
-   - 同步更新 `strategies/README.md` 索引、`CLAUDE.md` 策略清單、`CHANGELOG.md`
+3. **完成實作後更新所有相關文件**（完整清單，不可遺漏）：
+   - `analysis/documents/3_策略回測/strategies/<NN_策略名>/README.md` — 建立策略子資料夾，撰寫 README（參數詳解 + 學理來源 + 買賣條件 + Code Review 記錄），相關 PDF 論文放在同資料夾
+   - `analysis/documents/3_策略回測/strategies/README.md` — 更新策略索引表
+   - `analysis/documents/測試說明.md` — 更新測試模組表格 + 合計數
+   - `analysis/strategies/__init__.py` — 註冊新策略到 `STRATEGY_MAP`
+   - `CLAUDE.md` — 更新策略清單表格（22→N）、Tests 表格
+   - `README.md` — 更新策略數量
+   - `analysis/README.md` — 更新內建策略清單
+   - `CHANGELOG.md` — 記錄變更
+   - 用 `grep` 搜尋舊的數字常量（策略數、測試數）確認所有出處已更新
 
 ### 開發規範
 
