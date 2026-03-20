@@ -759,6 +759,16 @@ def generate_report(ranked: list[dict], engine=None, strategies_used: list[str] 
                     lines.append(f"| {sec} | — | {cnt} | {pct:.0f}% |")
             lines.append("")
 
+    # 版本資訊
+    fp = collect_version_fingerprint()
+    lines.append("## 版本資訊\n")
+    lines.append(f"- **Git Commit**: {fp['git_commit'][:7]}")
+    lines.append(f"- **App Version**: {fp['app_version']}")
+    weight_str = ", ".join(f"{k}({v})" for k, v in STRATEGY_WEIGHTS.items())
+    lines.append(f"- **策略權重**: {weight_str}")
+    lines.append(f"- **選股參數**: signal_days={DEFAULT_SIGNAL_DAYS}, "
+                 f"min_agree=2, min_volume={MIN_AVG_VOLUME}張\n")
+
     lines.append("---\n")
     lines.append("## 風險提示\n")
     lines.append("- 本報告為量化模型自動產出，不構成投資建議")

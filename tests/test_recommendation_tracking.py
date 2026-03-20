@@ -21,6 +21,7 @@ from scripts.daily_stock_picker import (
     collect_version_fingerprint,
     collect_strategy_hashes,
     save_recommendations,
+    generate_report,
     STRATEGY_WEIGHTS,
 )
 
@@ -166,3 +167,22 @@ class TestSaveRecommendations:
         for name, v in votes.items():
             if v["signal_date"] is not None:
                 assert isinstance(v["signal_date"], str)
+
+
+class TestReportVersionBlock:
+    """報告版本指紋區塊"""
+
+    @patch("scripts.daily_stock_picker.collect_version_fingerprint")
+    @patch("scripts.daily_stock_picker.collect_strategy_hashes")
+    def test_report_contains_version_block(self, mock_hashes, mock_fp):
+        mock_fp.return_value = {"git_commit": "a1b2c3d4e5f6", "app_version": "1.0.0"}
+        mock_hashes.return_value = {"rsi_reversal.py": "abc123"}
+        report = generate_report(
+            ranked=[],
+            strategies_used=["RSI 反轉", "價值投資"],
+            total_scanned=1800,
+            report_date="2026-03-20",
+        )
+        assert "版本資訊" in report
+        assert "a1b2c3d" in report
+        assert "1.0.0" in report
