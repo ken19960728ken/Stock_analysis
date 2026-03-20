@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.notifier import _convert_tables, _markdown_to_html, send_report_email
+import os
+
+from core.notifier import (
+    _convert_tables,
+    _markdown_to_html,
+    send_alert_email,
+    send_report_email,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -271,3 +278,65 @@ class TestConvertTables:
         html = _convert_tables(md)
         assert "</table>" in html
         assert "some text" in html
+
+
+# ---------------------------------------------------------------------------
+# send_alert_email
+# ---------------------------------------------------------------------------
+
+class TestSendAlertEmail:
+    """告警 Email"""
+
+    @patch("core.notifier._send_smtp")
+    def test_warning_subject_prefix(self, mock_smtp):
+        mock_smtp.return_value = True
+        with patch.dict(os.environ, {
+            "EMAIL_SENDER": "test@gmail.com",
+            "EMAIL_APP_PASSWORD": "pass",
+            "EMAIL_RECIPIENTS": "user@example.com",
+        }):
+            result = send_alert_email(
+                subject="資料缺漏",
+                body="daily_price 缺少 50 支股票",
+                severity="warning",
+            )
+        assert result is True
+        call_args = mock_smtp.call_args
+        msg = call_args[0][0]
+        assert "[WARNING]" in msg["Subject"]
+
+    @patch("core.notifier._send_smtp")
+    def test_critical_subject_prefix(self, mock_smtp):
+        mock_smtp.return_value = True
+        with patch.dict(os.environ, {
+            "EMAIL_SENDER": "test@gmail.com",
+            "EMAIL_APP_PASSWORD": "pass",
+            "EMAIL_RECIPIENTS": "user@example.com",
+        }):
+            result = send_alert_email(
+                subject="Scanner 連續失敗",
+                body="price scanner 連續 3 次失敗",
+                severity="critical",
+            )
+        assert result is True
+        call_args = mock_smtp.call_args
+        msg = call_args[0][0]
+        assert "[CRITICAL]" in msg["Subject"]
+
+    @patch("core.notifier.load_dotenv")
+    def test_missing_env_returns_false(self, mock_dotenv):
+        with patch.dict(os.environ, {}, clear=True):
+            result = send_alert_email("test", "body")
+        assert result is False
+
+    @patch("core.notifier._send_smtp")
+    def test_info_severity(self, mock_smtp):
+        mock_smtp.return_value = True
+        with patch.dict(os.environ, {
+            "EMAIL_SENDER": "t@g.com",
+            "EMAIL_APP_PASSWORD": "p",
+            "EMAIL_RECIPIENTS": "u@e.com",
+        }):
+            send_alert_email("test", "body", severity="info")
+        msg = mock_smtp.call_args[0][0]
+        assert "[INFO]" in msg["Subject"]

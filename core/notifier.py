@@ -92,10 +92,17 @@ def send_report_email(report_path: str, subject: str | None = None) -> bool:
     msg.attach(attachment)
 
     # 寄送
+    success = _send_smtp(msg, sender, password, recipients)
+    if success:
+        logger.info(f"報告 Email 已寄送至 {recipients}")
+    return success
+
+
+def _send_smtp(msg, sender: str, password: str, recipients: list[str]) -> bool:
+    """共用 SMTP 寄送邏輯"""
     proxy_url = os.getenv("EMAIL_PROXY")
     try:
         if proxy_url:
-            # 透過 HTTP CONNECT proxy 建立 TCP tunnel
             server = _smtp_via_proxy(proxy_url)
         else:
             server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
@@ -104,11 +111,51 @@ def send_report_email(report_path: str, subject: str | None = None) -> bool:
             server.starttls()
             server.login(sender, password)
             server.sendmail(sender, recipients, msg.as_string())
-        logger.info(f"報告 Email 已寄送至 {recipients}")
         return True
     except Exception as e:
-        logger.error(f"Email 寄送失敗: {e}")
+        logger.error(f"SMTP 寄送失敗: {e}")
         return False
+
+
+def send_alert_email(subject: str, body: str, severity: str = "warning") -> bool:
+    """
+    寄送告警 Email（純文字，無附件）。
+
+    Parameters
+    ----------
+    subject : str
+        告警主旨（自動加上嚴重等級前綴）
+    body : str
+        告警內容（純文字）
+    severity : str
+        "info" / "warning" / "critical"
+    """
+    load_dotenv()
+    sender = os.getenv("EMAIL_SENDER")
+    password = os.getenv("EMAIL_APP_PASSWORD")
+    recipients_str = os.getenv("EMAIL_RECIPIENTS")
+
+    if not all([sender, password, recipients_str]):
+        logger.warning("Email 環境變數未設定，跳過告警")
+        return False
+
+    recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+    if not recipients:
+        return False
+
+    prefix = {"info": "[INFO]", "warning": "[WARNING]", "critical": "[CRITICAL]"}
+    full_subject = f"{prefix.get(severity, '[ALERT]')} {subject}"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = full_subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(recipients)
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    success = _send_smtp(msg, sender, password, recipients)
+    if success:
+        logger.info(f"告警 Email 已寄送: {full_subject}")
+    return success
 
 
 def _smtp_via_proxy(proxy_url: str) -> smtplib.SMTP:
