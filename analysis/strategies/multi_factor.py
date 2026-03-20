@@ -59,8 +59,8 @@ class MultiFactorStrategy(Strategy):
         ma20_direction = (ma20 > ma20.shift(5)).astype(float) * 2 - 1
         tech_score = tech_score + ma20_direction
 
-        # 正規化到 [-1, 1]（使用 expanding max 避免 look-ahead bias）
-        tech_max = tech_score.abs().expanding(min_periods=1).max()
+        # 正規化到 [-1, 1]（rolling max，只看過去一年資料）
+        tech_max = tech_score.abs().rolling(window=252, min_periods=20).max()
         tech_score = tech_score / tech_max.replace(0, 1)
 
         # --- 籌碼面分數 ---
