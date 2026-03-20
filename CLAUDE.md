@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 台灣股市量化交易系統，分為兩大部分：
 
 1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（16 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（22 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -171,8 +171,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `deploy/setup-secrets.sh` | 建立 Secret Manager Secrets（從 .env 讀取 4 個敏感值 + 授權 SA） |
 | `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report 兩個 Job（Secret Manager 注入敏感變數） |
 | `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（Secret Manager 注入敏感變數） |
+| `deploy/pre-deploy-check.sh` | 部署前檢查（Git 乾淨、SemVer 格式、Tag 不重複、測試通過、CHANGELOG 有更新） |
+| `deploy/release.sh` | 一站式發布腳本（pre-check → git tag → push → deploy → 摘要） |
 | `deploy/setup-scheduler.sh` | Cloud Scheduler 雙排程（stock-data 18:30 + stock-report 18:40 UTC+8） |
-| `deploy/部署流程.md` | 完整部署文件（含環境版本 + 踩坑紀錄） |
+| `deploy/部署流程.md` | 完整部署文件（含環境版本 + 版本管控 + 踩坑紀錄） |
 
 ### Dashboard 模組 `dashboard/`
 
@@ -244,8 +246,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_chip_scanner.py` | ChipScanner 單元測試 |
 | `test_valuation_scanner.py` | ValuationScanner 單元測試 |
 | `test_daily_updater.py` | DailyUpdater 測試（21 項） |
-| `test_all_strategies.py` | 12 個策略獨立單元測試（54 項） |
-| `test_strategies.py` | 4 個策略深度測試 + 整合驗證（30 項） |
+| `test_all_strategies.py` | 12 個策略獨立單元測試（60 項） |
+| `test_strategies.py` | 4 個策略深度測試 + 多因子 Z-Score（27 項） |
 | `test_backtester.py` | 回測引擎測試 |
 | `test_portfolio_backtester.py` | 組合回測測試 |
 | `test_portfolio_optimizer.py` | 組合最佳化測試（Max Sharpe/Min Vol/Risk Parity/BL） |
@@ -268,7 +270,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_core_local_index.py` | core/local_index.py SQLite 索引測試 |
 | `test_core_scanner_base.py` | core/scanner_base.py 掃描流程 + 熔斷測試 |
 | `test_strategy_report.py` | 通用策略回測報告測試（24 項） |
-| `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項） |
+| `test_new_strategies.py` | 趨勢過濾MA + 多策略動態組合 測試（26 項，含整合驗證） |
 | `test_improved_strategies.py` | 策略強化測試（RSI 趨勢過濾、MACD 背離、法人拆分、券資比軋空，20 項） |
 | `test_daily_stock_picker.py` | 每日選股報告測試（15 項） |
 | `test_notifier.py` | Email 通知模組測試（16 項：寄送流程 + Markdown→HTML + 表格轉換） |
@@ -325,9 +327,22 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
   2. 確認部署腳本（`deploy/*.sh`）的實際行為與 `deploy/部署流程.md` 描述一致
   3. 如有差異，先更新文件再執行部署，確保文件永遠反映線上最新狀態
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
-- 完成重大功能變更後，主動提議更新 CLAUDE.md 與 README.md。
+- **改動程式碼後必須主動同步所有相關 .md 文件，不等使用者提醒，且不可遺漏**。完整的「程式碼變更 → 文件同步」對應規則記錄在 auto memory 的 `doc-sync-rules.md`，每次改動前先查閱。數字常量（策略數、測試數、頁面數）改動後必須 grep 確認所有出處。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
 - 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 22`），新增策略時需全域搜尋並更新所有相關斷言。
+
+### 版本管控規範
+
+- **版本定義**：`pyproject.toml` 的 `version` 為唯一版本真相源，`analysis/__init__.__version__` 透過 `importlib.metadata` 自動讀取。
+- **SemVer 規則**：MAJOR（破壞性變更）/ MINOR（新功能）/ PATCH（修復）。
+- **Docker 映像標籤**：每次部署同時標記 `<version>-<git-sha>` 和 `latest`，可追溯到具體 commit。
+- **發布流程**：
+  1. 更新 `pyproject.toml` 版本號
+  2. 更新 `CHANGELOG.md`（遵循 [Keep a Changelog](https://keepachangelog.com/) 格式）
+  3. Commit 所有變更
+  4. 執行 `bash deploy/release.sh [pipeline|analysis|both]`（自動執行 pre-deploy-check → git tag → push tag → 部署）
+- **部署前檢查**：`bash deploy/pre-deploy-check.sh` 驗證 Git 乾淨、版本格式、tag 不重複、測試通過、CHANGELOG 有記錄。
+- **回滾方式**：`gcloud run deploy --image=<舊版映像標籤>` 或 `gcloud run jobs update --image=<舊版映像標籤>`。
 
 ## Cloud Run 部署注意事項
 
