@@ -5,6 +5,10 @@
 ## [Unreleased]
 
 ### Added
+- **選股推薦追蹤機制**：每份報告記錄 git commit SHA + 策略檔案 hash + 參數快照（`recommendation_history` 表）
+- **績效自動回填**：追蹤推薦股票 T+5/T+10/T+20（交易日）的實際表現（`scripts/performance_tracker.py`）
+- **績效追蹤報告**：整體勝率、按策略拆分、版本變更記錄（`reports/performance_tracking.md`）
+- **每日選股報告版本資訊**：報告末尾新增 Git Commit、App Version、策略權重、選股參數
 - **Git 分支模型**：建立 `develop → main` 開發/正式環境分離，日常開發在 `develop`，部署只從 `main`
 - **部署腳本 branch guard**：`release.sh` 和 `pre-deploy-check.sh` 強制檢查必須在 main 分支
 - **策略文件重構**：22 個策略各建獨立子資料夾，整合參數詳解 + 學理來源 + PDF 論文，取代原 1014 行單一大檔

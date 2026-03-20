@@ -64,6 +64,11 @@ uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 23
 uv run python scripts/strategy_report.py --strategy "MA 交叉" --all --top 20 --no-html
 uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 --param fast_period=10
 
+# === 績效追蹤 ===
+uv run python scripts/performance_tracker.py                  # 回填績效 + 產出追蹤報告
+uv run python scripts/performance_tracker.py --backfill-only  # 僅回填
+uv run python scripts/performance_tracker.py --report-only    # 僅產報告
+
 # === 單獨執行 scanner（支援 --test 單支測試） ===
 uv run python -m scanners.price_scanner                 # 全市場日K
 uv run python -m scanners.price_scanner_weekly           # 全市場週K
@@ -201,6 +206,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `backfill_missing_data.py` | 一次性資料補抓（stock_per/market_value 批量 + DailyUpdater 補缺漏） |
 | `test_email.py` | Cloud Run Email 寄送測試（stderr 輸出，用於 Cloud Logging 驗證） |
 | `scrape_sub_industry.py` | 從 HiStock 爬取次產業分類 → `data/sub_industry_mapping.json`（一次性工具，`--diff` 比較差異） |
+| `performance_tracker.py` | 績效追蹤（回填 T+5/T+10/T+20 + 追蹤報告） |
 
 ### Scanner 模組 `scanners/`
 
@@ -236,6 +242,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `market_value` | 市值 | `(stock_id, date)` |
 | `industry_mapping` | 股票產業分類（舊表，向後相容） | — |
 | `industry_classification` | 兩層產業分類（sector + sub_industry） | `(stock_id)` |
+| `recommendation_history` | 選股推薦追蹤（版本指紋 + 績效回填） | `(report_date, stock_id)` |
 
 ### Tests `tests/`
 
@@ -280,6 +287,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_sub_industry_rotation.py` | 次產業輪動策略測試（訊號生成、最大持有天數、參數邊界） |
 | `test_supply_chain.py` | 供應鏈分析測試（營收動能、領先落後矩陣） |
 | `test_granger_chain.py` | Granger 因果供應鏈自動發現測試（12 項） |
+| `test_recommendation_tracking.py` | 推薦追蹤測試（版本指紋、DB 寫入、序列化，10 項） |
+| `test_performance_tracker.py` | 績效回填測試（交易日計算、報告產出，8 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
