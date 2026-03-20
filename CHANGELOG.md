@@ -10,6 +10,9 @@
 - **告警 Email**：`send_alert_email()` 支援 `[INFO]`/`[WARNING]`/`[CRITICAL]` 嚴重等級標籤
 - **告警升級機制**：`check_alert_escalation()` 依連續失敗次數判斷告警等級（≥1 warning、≥3 critical）
 - **健康檢查端點**：Dashboard `/health` API 回報 DB 連線狀態 + 資料最新日期 + 健檢結果（供 Cloud Run probe）
+- **推薦命中率儀表板**（`13_推薦追蹤.py`）：整體績效概覽、策略拆分命中率、排名 vs 績效、時間趨勢四區塊
+- **推薦追蹤資料層**（`recommendation_db.py`）：SQLite/Supabase 環境變數切換 + JSONB 自動轉換
+- **種子資料腳本**（`seed_recommendation_data.py`）：三層策略（Supabase dump / Markdown 解析 / 模擬資料）
 - **選股推薦追蹤機制**：每份報告記錄 git commit SHA + 策略檔案 hash + 參數快照（`recommendation_history` 表）
 - **績效自動回填**：追蹤推薦股票 T+5/T+10/T+20（交易日）的實際表現（`scripts/performance_tracker.py`）
 - **績效追蹤報告**：整體勝率、按策略拆分、版本變更記錄（`reports/performance_tracking.md`）

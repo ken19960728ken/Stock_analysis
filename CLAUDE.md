@@ -121,6 +121,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/10_事件分析.py` | 除息/財報事件研究 + CAR/AAR |
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
+| `analysis/pages/13_推薦追蹤.py` | 推薦命中率儀表板（整體勝率、策略拆分、排名 vs 績效、時間趨勢） |
 | `analysis/strategies/` | 22 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
@@ -138,6 +139,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/peer_comparison.py` | 同業比較分析（同業查詢、指標比較、百分位排名） |
 | `analysis/utils/supply_chain.py` | 產業供應鏈連動分析（營收動能傳導、領先落後） |
 | `analysis/utils/granger_chain.py` | Granger 因果供應鏈自動發現（全配對檢定 + DAG + 網絡圖 + 快取） |
+| `analysis/utils/recommendation_db.py` | 推薦追蹤資料層（SQLite/Supabase 切換 + JSONB 轉換） |
 
 #### 策略清單（22 個）
 
@@ -209,6 +211,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_email.py` | Cloud Run Email 寄送測試（stderr 輸出，用於 Cloud Logging 驗證） |
 | `scrape_sub_industry.py` | 從 HiStock 爬取次產業分類 → `data/sub_industry_mapping.json`（一次性工具，`--diff` 比較差異） |
 | `performance_tracker.py` | 績效追蹤（回填 T+5/T+10/T+20 + 追蹤報告） |
+| `seed_recommendation_data.py` | 建立本地推薦追蹤 SQLite（報告解析 + 模擬資料） |
 
 ### Scanner 模組 `scanners/`
 
@@ -292,6 +295,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_granger_chain.py` | Granger 因果供應鏈自動發現測試（12 項） |
 | `test_recommendation_tracking.py` | 推薦追蹤測試（版本指紋、DB 寫入、序列化，10 項） |
 | `test_performance_tracker.py` | 績效回填測試（交易日計算、報告產出，8 項） |
+| `test_recommendation_db.py` | 推薦追蹤資料層測試（SQLite 讀取、JSONB 轉換、策略拆分，11 項） |
+| `test_seed_recommendation.py` | 種子資料腳本測試（報告解析、模擬資料、SQLite 寫入，8 項） |
 | `test_data_publication_delay.py` | 資料公布延遲常數 + 偏移函式測試（10 項） |
 | `test_alert_manager.py` | 告警管理測試（執行日誌記錄 + 告警升級，13 項） |
 | `test_health_check.py` | 資料健檢測試（DB 連線 + 筆數 + 異常值 + 告警內文，9 項） |
