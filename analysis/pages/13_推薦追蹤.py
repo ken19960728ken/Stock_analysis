@@ -139,47 +139,63 @@ if hist_data:
 
 st.header("策略拆分命中率")
 
-has_t5 = df[df["return_t5"].notna()].copy()
-if has_t5.empty:
-    st.info("尚無 T+5 績效資料")
+has_perf = df[df["return_t5"].notna() | df["return_t10"].notna() | df["return_t20"].notna()].copy()
+if has_perf.empty:
+    st.info("尚無績效資料")
 else:
-    strategy_stats: dict[str, list[float]] = {}
-    for _, row in has_t5.iterrows():
+    # 收集每策略在各期間的報酬
+    strategy_returns: dict[str, dict[str, list[float]]] = {}
+    for _, row in has_perf.iterrows():
         votes = row.get("strategy_votes")
         if not isinstance(votes, dict):
             continue
         for name, v in votes.items():
             if isinstance(v, dict) and v.get("recent_score", 0) > 0:
-                strategy_stats.setdefault(name, []).append(row["return_t5"])
+                strategy_returns.setdefault(name, {"t5": [], "t10": [], "t20": []})
+                for t in ["t5", "t10", "t20"]:
+                    val = row.get(f"return_{t}")
+                    if pd.notna(val):
+                        strategy_returns[name][t].append(val)
 
     strat_rows = []
-    for name in sorted(strategy_stats, key=lambda x: -len(strategy_stats[x])):
-        returns = strategy_stats[name]
-        count = len(returns)
+    for name in sorted(strategy_returns, key=lambda x: -len(strategy_returns[x]["t5"])):
+        d = strategy_returns[name]
+        count = len(d["t5"])
         if count < 2:
             continue
-        wr = sum(1 for r in returns if r > 0) / count * 100
-        avg = sum(returns) / count
-        strat_rows.append({
-            "策略": name, "推薦次數": count,
-            "T+5 勝率": f"{wr:.0f}%", "T+5 均報酬": f"{avg:+.2f}%",
-            "_wr": wr, "_avg": avg,
-        })
+        row_data = {"策略": name, "推薦次數": count, "_wr_t5": 0.0}
+        for t in ["t5", "t10", "t20"]:
+            rets = d[t]
+            if rets:
+                wr = sum(1 for r in rets if r > 0) / len(rets) * 100
+                avg = sum(rets) / len(rets)
+                label = t.upper().replace("T", "T+")
+                row_data[f"{label} 勝率"] = f"{wr:.0f}%"
+                row_data[f"{label} 均報酬"] = f"{avg:+.2f}%"
+                if t == "t5":
+                    row_data["_wr_t5"] = wr
+            else:
+                label = t.upper().replace("T", "T+")
+                row_data[f"{label} 勝率"] = "—"
+                row_data[f"{label} 均報酬"] = "—"
+        strat_rows.append(row_data)
 
     if strat_rows:
         strat_df = pd.DataFrame(strat_rows)
 
-        st.dataframe(
-            strat_df[["策略", "推薦次數", "T+5 勝率", "T+5 均報酬"]],
-            use_container_width=True, hide_index=True,
-        )
+        display_cols = ["策略", "推薦次數",
+                        "T+5 勝率", "T+5 均報酬",
+                        "T+10 勝率", "T+10 均報酬",
+                        "T+20 勝率", "T+20 均報酬"]
+        display_cols = [c for c in display_cols if c in strat_df.columns]
+        st.dataframe(strat_df[display_cols], use_container_width=True, hide_index=True)
 
         fig_strat = px.bar(
-            strat_df.sort_values("_wr", ascending=True),
-            x="_wr", y="策略", orientation="h",
-            labels={"_wr": "T+5 勝率 (%)", "策略": ""},
+            strat_df.sort_values("_wr_t5", ascending=True),
+            x="_wr_t5", y="策略", orientation="h",
+            labels={"_wr_t5": "T+5 勝率 (%)", "策略": ""},
             title="各策略 T+5 勝率",
-            text="_wr",
+            text="_wr_t5",
         )
         fig_strat.update_traces(texttemplate="%{text:.0f}%", textposition="outside")
         fig_strat.add_vline(x=50, line_dash="dash", line_color="gray", annotation_text="50%")
@@ -194,14 +210,17 @@ else:
 
 st.header("排名 vs 績效")
 
-rank_df = df[["rank", "return_t5"]].dropna()
+rank_period = st.radio("選擇期間", ["T+5", "T+10", "T+20"], horizontal=True, key="rank_period")
+rank_col = {"T+5": "return_t5", "T+10": "return_t10", "T+20": "return_t20"}[rank_period]
+
+rank_df = df[["rank", rank_col]].dropna()
 if rank_df.empty:
-    st.info("尚無排名績效資料")
+    st.info(f"尚無 {rank_period} 排名績效資料")
 else:
     fig_scatter = px.scatter(
-        rank_df, x="rank", y="return_t5",
-        labels={"rank": "推薦排名", "return_t5": "T+5 報酬率 (%)"},
-        title="推薦排名 vs T+5 報酬率",
+        rank_df, x="rank", y=rank_col,
+        labels={"rank": "推薦排名", rank_col: f"{rank_period} 報酬率 (%)"},
+        title=f"推薦排名 vs {rank_period} 報酬率",
         trendline="ols",
         opacity=0.6,
     )
@@ -209,7 +228,7 @@ else:
 
     if len(rank_df) >= 3:
         from scipy.stats import linregress
-        slope, intercept, r_value, p_value, std_err = linregress(rank_df["rank"], rank_df["return_t5"])
+        slope, intercept, r_value, p_value, std_err = linregress(rank_df["rank"], rank_df[rank_col])
         r_sq = r_value ** 2
         st.caption(f"線性回歸：r² = {r_sq:.3f}, slope = {slope:.3f}, p = {p_value:.3f}")
 
@@ -225,7 +244,7 @@ else:
 
     rank_df = rank_df.copy()
     rank_df["分組"] = rank_df["rank"].apply(_rank_group)
-    group_stats = rank_df.groupby("分組")["return_t5"].agg(["mean", "count"]).reset_index()
+    group_stats = rank_df.groupby("分組")[rank_col].agg(["mean", "count"]).reset_index()
     group_stats.columns = ["分組", "平均報酬", "樣本數"]
     order = {"Top 5": 0, "Top 6-10": 1, "Top 11+": 2}
     group_stats["_order"] = group_stats["分組"].map(order)
@@ -234,8 +253,8 @@ else:
     fig_group = px.bar(
         group_stats, x="分組", y="平均報酬",
         text="平均報酬",
-        labels={"平均報酬": "T+5 平均報酬 (%)", "分組": ""},
-        title="排名分組 T+5 平均報酬對比",
+        labels={"平均報酬": f"{rank_period} 平均報酬 (%)", "分組": ""},
+        title=f"排名分組 {rank_period} 平均報酬對比",
     )
     fig_group.update_traces(texttemplate="%{text:+.2f}%", textposition="outside")
     fig_group.add_hline(y=0, line_dash="dash", line_color="gray")
@@ -248,11 +267,18 @@ else:
 
 st.header("時間趨勢")
 
-time_df = df[["report_date", "return_t5"]].dropna()
-if time_df.empty:
-    st.info("尚無時序資料")
-else:
-    daily_avg = time_df.groupby("report_date")["return_t5"].mean().reset_index()
+trend_cols = {"T+5": "return_t5", "T+10": "return_t10", "T+20": "return_t20"}
+colors = {"T+5": "blue", "T+10": "green", "T+20": "red"}
+
+fig_trend = go.Figure()
+has_any_trend = False
+
+for t_label, t_col in trend_cols.items():
+    time_df = df[["report_date", t_col]].dropna()
+    if time_df.empty:
+        continue
+    has_any_trend = True
+    daily_avg = time_df.groupby("report_date")[t_col].mean().reset_index()
     daily_avg.columns = ["date", "avg_return"]
     daily_avg = daily_avg.sort_values("date")
 
@@ -261,33 +287,41 @@ else:
     else:
         daily_avg["MA5"] = daily_avg["avg_return"]
 
-    fig_trend = go.Figure()
+    color = colors[t_label]
     fig_trend.add_trace(go.Scatter(
         x=daily_avg["date"], y=daily_avg["avg_return"],
-        mode="markers+lines", name="每日平均 T+5 報酬",
-        line=dict(color="lightblue"), marker=dict(size=6),
+        mode="markers", name=f"{t_label} 每日均報酬",
+        marker=dict(size=4, color=color, opacity=0.3),
+        showlegend=False,
     ))
     fig_trend.add_trace(go.Scatter(
         x=daily_avg["date"], y=daily_avg["MA5"],
-        mode="lines", name="5 日滾動均線",
-        line=dict(color="blue", width=2),
+        mode="lines", name=f"{t_label} (5日均線)",
+        line=dict(color=color, width=2),
     ))
+
+if not has_any_trend:
+    st.info("尚無時序資料")
+else:
     fig_trend.add_hline(y=0, line_dash="dash", line_color="gray")
 
     ver_df = load_version_timeline()
     if not ver_df.empty:
-        ver_df["report_date"] = pd.to_datetime(ver_df["report_date"])
         for _, vrow in ver_df.iterrows():
+            x_val = str(vrow["report_date"])[:10]
             commit_short = str(vrow["git_commit"])[:7]
-            fig_trend.add_vline(
-                x=vrow["report_date"], line_dash="dot", line_color="orange",
-                annotation_text=commit_short,
-                annotation_position="top",
+            fig_trend.add_shape(
+                type="line", x0=x_val, x1=x_val, y0=0, y1=1,
+                yref="paper", line=dict(color="orange", width=1, dash="dot"),
+            )
+            fig_trend.add_annotation(
+                x=x_val, y=1, yref="paper", text=commit_short,
+                showarrow=False, font=dict(size=9, color="orange"),
             )
 
     fig_trend.update_layout(
-        title="推薦績效時間趨勢",
+        title="推薦績效時間趨勢（T+5 / T+10 / T+20）",
         xaxis_title="報告日期",
-        yaxis_title="平均 T+5 報酬率 (%)",
+        yaxis_title="平均報酬率 (%)",
     )
     st.plotly_chart(fig_trend, use_container_width=True)
