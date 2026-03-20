@@ -1,4 +1,5 @@
 import abc
+from datetime import datetime, timezone
 
 from tqdm import tqdm
 
@@ -18,6 +19,7 @@ class BaseScanner(abc.ABC):
     resume_tables = []
 
     def scan(self):
+        _scan_started = datetime.now(timezone.utc)
         targets = self.get_targets()
         if not targets:
             logger.warning("無目標可執行，請檢查資料庫。")
@@ -84,6 +86,22 @@ class BaseScanner(abc.ABC):
             logger.info(f"跳過: {skip_count} 檔")
             logger.info(f"失敗: {fail_count} 檔")
             logger.info("系統已安全著陸。")
+
+            # 記錄執行日誌到 DB
+            try:
+                from core.alert_manager import log_scanner_run
+                log_scanner_run(
+                    scanner_name=self.name,
+                    started_at=_scan_started,
+                    finished_at=datetime.now(timezone.utc),
+                    total_targets=len(targets),
+                    success_count=success_count,
+                    skip_count=skip_count,
+                    fail_count=fail_count,
+                    triggered_by="manual",
+                )
+            except Exception as e:
+                logger.debug(f"執行日誌記錄失敗（不影響主流程）: {e}")
 
     @abc.abstractmethod
     def fetch_one(self, target):
