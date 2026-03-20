@@ -8,7 +8,7 @@ import sqlite3
 import time
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI(title="Stock Scanner Dashboard")
 
@@ -219,3 +219,27 @@ async def api_failures():
         )
 
     return {"failures": failures, "total": len(failures)}
+
+
+@app.get("/health")
+async def health():
+    """健康檢查端點 — 供 Cloud Run liveness probe 和手動查詢"""
+    try:
+        from core.health_check import run_health_check
+        result = run_health_check()
+        status_code = 200 if result.overall_status == "healthy" else 503
+        return JSONResponse(
+            content={
+                "status": result.overall_status,
+                "check_date": result.check_date,
+                "db_connected": result.db_connected,
+                "data_max_date": result.data_max_date,
+                "checks": result.checks,
+            },
+            status_code=status_code,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"status": "unhealthy", "error": str(e)},
+            status_code=503,
+        )
