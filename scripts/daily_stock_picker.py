@@ -11,7 +11,10 @@
 """
 
 import argparse
+import hashlib
+import importlib.metadata
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -124,6 +127,43 @@ def _build_stock_cache(df: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
     if df is None or df.empty:
         return {}
     return {sid: grp.reset_index(drop=True) for sid, grp in df.groupby("stock_id", sort=False)}
+
+
+# ===================================================================
+# 版本指紋
+# ===================================================================
+
+def collect_version_fingerprint() -> dict:
+    """收集 git commit SHA + app 版本號"""
+    # git commit
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(PROJECT_ROOT),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        git_sha = "unknown"
+
+    # app version
+    try:
+        app_ver = importlib.metadata.version("stock-analysis")
+    except Exception:
+        app_ver = "unknown"
+
+    return {"git_commit": git_sha, "app_version": app_ver}
+
+
+def collect_strategy_hashes() -> dict[str, str]:
+    """計算每個策略檔案的 SHA256，排除 __init__.py 和 base.py"""
+    strategy_dir = PROJECT_ROOT / "analysis" / "strategies"
+    hashes = {}
+    for f in sorted(strategy_dir.glob("*.py")):
+        if f.name in ("__init__.py", "base.py"):
+            continue
+        sha = hashlib.sha256(f.read_bytes()).hexdigest()
+        hashes[f.name] = sha
+    return hashes
 
 
 def _load_name_map() -> dict[str, str]:
