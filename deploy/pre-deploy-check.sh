@@ -17,6 +17,15 @@ check_warn() { echo "  ⚠ $1"; ((WARN++)); }
 echo "=== 部署前檢查 ==="
 echo ""
 
+# --- 0. 必須在 main 分支 ---
+echo "[分支檢查]"
+CURRENT_BRANCH=$(git branch --show-current)
+if [ "$CURRENT_BRANCH" == "main" ]; then
+    check_pass "目前在 main 分支"
+else
+    check_fail "只能從 main 分支部署（目前在: ${CURRENT_BRANCH}）"
+fi
+
 # --- 1. 讀取版本號 ---
 if ! VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])" 2>/dev/null); then
     check_fail "無法從 pyproject.toml 讀取版本號"

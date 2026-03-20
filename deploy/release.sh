@@ -7,6 +7,17 @@
 # ==============================================================================
 set -euo pipefail
 
+# --- Branch guard: 只能從 main 分支執行 ---
+if [ "$(git branch --show-current)" != "main" ]; then
+    echo "❌ 只能從 main 分支執行 release"
+    echo ""
+    echo "正確流程："
+    echo "  1. git checkout main"
+    echo "  2. git merge develop"
+    echo "  3. bash deploy/release.sh $1"
+    exit 1
+fi
+
 TARGET="${1:-both}"
 
 if [[ "$TARGET" != "pipeline" && "$TARGET" != "analysis" && "$TARGET" != "both" ]]; then

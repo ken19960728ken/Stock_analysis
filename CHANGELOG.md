@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+- **Git 分支模型**：建立 `develop → main` 開發/正式環境分離，日常開發在 `develop`，部署只從 `main`
+- **部署腳本 branch guard**：`release.sh` 和 `pre-deploy-check.sh` 強制檢查必須在 main 分支
+
+### Changed
+- **Workflow Conventions 重構**：移除「改動即部署」規則，部署時機由使用者決定
+- **發布流程更新**：加入 `develop → main` merge 步驟
+
 ### Fixed
 - **策略參數詳解文件同步**：修正 9 個策略（MACD、Dual Thrust、法人跟單、融資融券、自由現金流、營收動能、多因子綜合、多策略動態組合、波動率壓縮突破）的文件與程式碼不一致問題，共 30 處修正（參數預設值、遺漏參數、核心邏輯描述）
 - **策略學理來源**：更新 MACD 策略的核心邏輯描述（連續確認 + 趨勢過濾 + 背離偵測）

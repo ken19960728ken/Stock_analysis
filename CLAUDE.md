@@ -316,16 +316,28 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Workflow Conventions
 
-- 執行重大操作（如切換功能、部署）前，先 git commit 並 push 當前改動。
-- 修改 `main.py` 或 `core/` 模組後，需重新部署 Cloud Run Job（`bash deploy/deploy-pipeline.sh`），否則不會載入新程式碼。
-- **修改 `analysis/` 相關程式碼後，必須依序完成以下三步**：
+### 分支模型（develop → main）
+
+- **日常開發在 `develop` 分支**，所有 commit 和 push 預設操作 `develop`
+- **`main` 分支 = 正式版本**，只接受從 `develop` merge，Claude 不直接在 main 上開發
+- **部署時機由使用者決定**：Claude 不主動提醒部署，只在使用者明確要求時才執行
+- **日常開發流程**：
+  1. 在 `develop` 分支開發 + commit
+  2. 同步更新相關 .md 文件
+  3. `uv run pytest tests/ -v` 確認測試通過
+  4. `git push origin develop`
+- **部署流程**（使用者下達指令後）：
+  1. `git checkout main && git merge develop`
+  2. 確認 `deploy/部署流程.md` 與腳本一致
+  3. `bash deploy/release.sh [pipeline|analysis|both]`
+  4. `git checkout develop`（回到開發分支繼續工作）
+
+### 開發規範
+
+- 執行重大操作（如切換功能）前，先 git commit 並 push 當前改動。
+- **修改 `analysis/` 相關程式碼後，必須完成以下兩步**：
   1. 更新對應文件（`analysis/documents/` 下的模型文件 + `README.md` 中的相關描述）
   2. 更新 `CLAUDE.md`（如有架構、策略、頁面等變動）
-  3. 重新部署 Analysis Service（`bash deploy/deploy-analysis.sh`），否則線上版本不會更新
-- **每次重新部署（Pipeline Job 或 Analysis Service）前，必須**：
-  1. 檢查 `deploy/部署流程.md` 是否需要同步更新（新增/移除環境變數、Secret、API、Dockerfile 變動、排程變動等）
-  2. 確認部署腳本（`deploy/*.sh`）的實際行為與 `deploy/部署流程.md` 描述一致
-  3. 如有差異，先更新文件再執行部署，確保文件永遠反映線上最新狀態
 - 測試時使用多元股票代碼（含歷史失敗的股票），不要只用 2330 作為測試樣本。
 - **改動程式碼後必須主動同步所有相關 .md 文件，不等使用者提醒，且不可遺漏**。完整的「程式碼變更 → 文件同步」對應規則記錄在 auto memory 的 `doc-sync-rules.md`，每次改動前先查閱。數字常量（策略數、測試數、頁面數）改動後必須 grep 確認所有出處。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
@@ -340,8 +352,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
   1. 更新 `pyproject.toml` 版本號
   2. 更新 `CHANGELOG.md`（遵循 [Keep a Changelog](https://keepachangelog.com/) 格式）
   3. Commit 所有變更
-  4. 執行 `bash deploy/release.sh [pipeline|analysis|both]`（自動執行 pre-deploy-check → git tag → push tag → 部署）
-- **部署前檢查**：`bash deploy/pre-deploy-check.sh` 驗證 Git 乾淨、版本格式、tag 不重複、測試通過、CHANGELOG 有記錄。
+  4. `git checkout main && git merge develop`
+  5. 執行 `bash deploy/release.sh [pipeline|analysis|both]`（自動執行 pre-deploy-check → branch 檢查 → git tag → push tag → 部署）
+  6. `git checkout develop`（回到開發分支）
+- **部署前檢查**：`bash deploy/pre-deploy-check.sh` 驗證分支為 main、Git 乾淨、版本格式、tag 不重複、測試通過、CHANGELOG 有記錄。
 - **回滾方式**：`gcloud run deploy --image=<舊版映像標籤>` 或 `gcloud run jobs update --image=<舊版映像標籤>`。
 
 ## Cloud Run 部署注意事項
