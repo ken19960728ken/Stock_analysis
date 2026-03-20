@@ -289,6 +289,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_granger_chain.py` | Granger 因果供應鏈自動發現測試（12 項） |
 | `test_recommendation_tracking.py` | 推薦追蹤測試（版本指紋、DB 寫入、序列化，10 項） |
 | `test_performance_tracker.py` | 績效回填測試（交易日計算、報告產出，8 項） |
+| `test_data_publication_delay.py` | 資料公布延遲常數 + 偏移函式測試（10 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
@@ -302,6 +303,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 ## Key Patterns
 
 - All DB writes use SQLAlchemy with `if_exists="append"` via pandas `to_sql`.
+- **資料公布延遲模型**：所有 `enrich_data()` 在合併非價格資料前，會根據 `DATA_PUBLICATION_DELAY`（`core/constants.py`）對資料日期做延遲偏移（`apply_publication_delay()`），避免回測中使用尚未公布的資料。月營收延遲 10 天、季報延遲 45 天、籌碼/估值延遲 1 天。
 - All scanners inherit from `BaseScanner`，提供 tqdm 進度條、Ctrl+C 安全中斷、斷點續傳、結算報告。
 - All strategies inherit from `Strategy` ABC（`analysis/strategies/base.py`），實作 `generate_signals(df, **params) -> pd.DataFrame`。
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
