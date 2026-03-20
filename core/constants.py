@@ -1,6 +1,8 @@
 """
-全域常數 — 交易日數、無風險利率、產業分類等
+全域常數 — 交易日數、無風險利率、產業分類、資料公布延遲等
 """
+
+import pandas as pd
 
 # 台灣股市年交易日數（約 252 天）
 TRADING_DAYS_PER_YEAR = 252
@@ -83,3 +85,48 @@ def normalize_sector(raw_name: str) -> str:
         return raw_name
     name = raw_name.strip()
     return INDUSTRY_ALIAS_MAP.get(name, name)
+
+
+# ---------------------------------------------------------------------------
+# 資料公布延遲（日曆日）
+# 回測時，各類資料在公布延遲後才可被策略使用，避免前視偏差。
+# ---------------------------------------------------------------------------
+DATA_PUBLICATION_DELAY = {
+    "daily_price":             0,   # 當日收盤後即可用
+    "chip_institutional":      1,   # 隔日公布
+    "chip_margin":             1,   # 隔日公布
+    "chip_holding_pct":        1,   # 隔日公布
+    "chip_securities_lending": 1,   # 隔日公布
+    "chip_short_sale":         1,   # 隔日公布
+    "stock_per":               1,   # 隔日公布（需 EPS + 收盤價計算）
+    "month_revenue":          10,   # 每月 10 日公布上月
+    "financial_reports":      45,   # 季末後 45 天內公布
+    "dividend_history":        0,   # 除息日前已公告
+    "market_value":            1,   # 隔日公布
+}
+
+
+def apply_publication_delay(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+    """
+    對資料 DataFrame 套用公布延遲偏移。
+
+    將 date 欄位往後推移指定天數，使 merge_asof(direction="backward")
+    在延遲期間內無法對齊到該筆資料，模擬真實的資料可得性。
+
+    Parameters
+    ----------
+    df : DataFrame
+        必須含 date 欄位
+    table_name : str
+        資料表名稱，用來查詢延遲天數
+
+    Returns
+    -------
+    DataFrame : date 已偏移的副本（delay=0 時回傳原 df，不複製）
+    """
+    delay = DATA_PUBLICATION_DELAY.get(table_name, 0)
+    if delay == 0 or df.empty:
+        return df
+    result = df.copy()
+    result["date"] = result["date"] + pd.Timedelta(days=delay)
+    return result
