@@ -148,7 +148,7 @@ class Strategy(ABC):
 
 - [1. 個股分析](documents/1_個股分析/)（含同業比較分析）
 - [2. 因子篩選](documents/2_因子篩選/)
-- [3. 策略回測](documents/3_策略回測/)（含 22 個策略參數詳解）
+- [3. 策略回測](documents/3_策略回測/)（含 [22 個策略獨立文件](documents/3_策略回測/strategies/)）
 - [4. 配對交易](documents/4_配對交易/)
 - [5. 風險管理](documents/5_風險管理/)
 - [6. 市場總覽](documents/6_市場總覽/)（含產業熱力圖）

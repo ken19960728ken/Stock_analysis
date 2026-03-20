@@ -7,6 +7,7 @@
 ### Added
 - **Git 分支模型**：建立 `develop → main` 開發/正式環境分離，日常開發在 `develop`，部署只從 `main`
 - **部署腳本 branch guard**：`release.sh` 和 `pre-deploy-check.sh` 強制檢查必須在 main 分支
+- **策略文件重構**：22 個策略各建獨立子資料夾，整合參數詳解 + 學理來源 + PDF 論文，取代原 1014 行單一大檔
 
 ### Changed
 - **Workflow Conventions 重構**：移除「改動即部署」規則，部署時機由使用者決定
