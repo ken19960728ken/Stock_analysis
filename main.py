@@ -30,6 +30,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
 
 from core.logger import setup_logger
@@ -235,8 +236,12 @@ def run_daily_report():
             logger.error(f"績效回填失敗（不影響報告）: {e}")
 
         # 4. 產出績效追蹤報告
+        perf_report_path = None
         try:
             generate_performance_report()
+            perf_report_path = str(Path(__file__).resolve().parent / "reports" / "performance_tracking.md")
+            if not Path(perf_report_path).exists():
+                perf_report_path = None
         except Exception as e:
             logger.error(f"績效追蹤報告產出失敗（不影響報告）: {e}")
 
@@ -248,6 +253,12 @@ def run_daily_report():
                 send_report_email(report_path)
             except Exception as e:
                 logger.error(f"Email 推送異常: {e}")
+            # 績效追蹤報告另寄一封
+            if perf_report_path:
+                try:
+                    send_report_email(perf_report_path, subject="選股績效追蹤報告")
+                except Exception as e:
+                    logger.error(f"績效追蹤 Email 推送異常: {e}")
         else:
             logger.warning("選股報告產出失敗")
     except Exception as e:
