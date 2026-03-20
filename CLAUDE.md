@@ -99,8 +99,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `core/rate_limiter.py` | 統一限速器（Token-aware delay + 429 重試 + 預算控制） |
 | `core/stock_list.py` | 目標股票清單查詢（DB 優先 + fallback） |
 | `core/scanner_base.py` | BaseScanner 抽象類別（主迴圈、tqdm、Ctrl+C、斷點續傳） |
-| `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`、`TWSE_SECTORS`、`INDUSTRY_ALIAS_MAP`、`normalize_sector()`） |
-| `core/notifier.py` | Email 通知模組（Gmail SMTP + HTTP CONNECT proxy，`send_report_email()`） |
+| `core/constants.py` | 全域常數（`TRADING_DAYS_PER_YEAR=252`、`RISK_FREE_RATE=0.015`、`TWSE_SECTORS`、`DATA_PUBLICATION_DELAY`、`apply_publication_delay()`） |
+| `core/notifier.py` | Email 通知模組（Gmail SMTP + HTTP CONNECT proxy，`send_report_email()` + `send_alert_email()`） |
+| `core/health_check.py` | 資料品質健檢（DB 連線、資料筆數、異常值偵測，`run_health_check()`） |
+| `core/alert_manager.py` | 告警管理（`log_scanner_run()` 執行日誌 + `check_alert_escalation()` 告警升級） |
 
 ### 量化分析平台 `analysis/`
 
@@ -243,6 +245,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `industry_mapping` | 股票產業分類（舊表，向後相容） | — |
 | `industry_classification` | 兩層產業分類（sector + sub_industry） | `(stock_id)` |
 | `recommendation_history` | 選股推薦追蹤（版本指紋 + 績效回填） | `(report_date, stock_id)` |
+| `scanner_run_log` | Scanner 執行日誌（開始/結束時間、成功/失敗數、耗時） | `(run_date, scanner_name, started_at)` |
 
 ### Tests `tests/`
 
@@ -290,6 +293,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_recommendation_tracking.py` | 推薦追蹤測試（版本指紋、DB 寫入、序列化，10 項） |
 | `test_performance_tracker.py` | 績效回填測試（交易日計算、報告產出，8 項） |
 | `test_data_publication_delay.py` | 資料公布延遲常數 + 偏移函式測試（10 項） |
+| `test_alert_manager.py` | 告警管理測試（執行日誌記錄 + 告警升級，13 項） |
+| `test_health_check.py` | 資料健檢測試（DB 連線 + 筆數 + 異常值 + 告警內文，9 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

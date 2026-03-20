@@ -5,6 +5,11 @@
 ## [Unreleased]
 
 ### Added
+- **資料品質監控系統**：`scanner_run_log` DB 表記錄每次 scanner 執行結果（時間、成功/失敗數、耗時），BaseScanner 自動寫入
+- **資料健檢**：`core/health_check.py` 檢查 DB 連線、資料筆數偏差、異常價格、零成交量，`--daily-data` 完成後自動執行
+- **告警 Email**：`send_alert_email()` 支援 `[INFO]`/`[WARNING]`/`[CRITICAL]` 嚴重等級標籤
+- **告警升級機制**：`check_alert_escalation()` 依連續失敗次數判斷告警等級（≥1 warning、≥3 critical）
+- **健康檢查端點**：Dashboard `/health` API 回報 DB 連線狀態 + 資料最新日期 + 健檢結果（供 Cloud Run probe）
 - **選股推薦追蹤機制**：每份報告記錄 git commit SHA + 策略檔案 hash + 參數快照（`recommendation_history` 表）
 - **績效自動回填**：追蹤推薦股票 T+5/T+10/T+20（交易日）的實際表現（`scripts/performance_tracker.py`）
 - **績效追蹤報告**：整體勝率、按策略拆分、版本變更記錄（`reports/performance_tracking.md`）
