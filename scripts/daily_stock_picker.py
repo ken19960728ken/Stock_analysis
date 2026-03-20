@@ -30,7 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from analysis.strategies import STRATEGY_MAP
 from analysis.utils.peer_comparison import calc_peer_percentile, get_peers
-from core.db import get_engine, safe_read_sql
+from core.db import get_engine, safe_read_sql, save_to_db
 from core.logger import setup_logger
 
 logger = setup_logger("daily_stock_picker")
@@ -164,6 +164,81 @@ def collect_strategy_hashes() -> dict[str, str]:
         sha = hashlib.sha256(f.read_bytes()).hexdigest()
         hashes[f.name] = sha
     return hashes
+
+
+# ===================================================================
+# 推薦記錄儲存
+# ===================================================================
+
+def _serialize_votes(votes: dict) -> dict:
+    """將 votes 中的 Timestamp 轉為 ISO 字串，確保 JSON 可序列化"""
+    serialized = {}
+    for name, v in votes.items():
+        entry = dict(v)
+        sd = entry.get("signal_date")
+        if sd is not None and hasattr(sd, "isoformat"):
+            entry["signal_date"] = sd.isoformat()[:10]
+        elif sd is not None:
+            entry["signal_date"] = str(sd)[:10]
+        serialized[name] = entry
+    return serialized
+
+
+def _build_recommendation_df(scan_result: dict) -> pd.DataFrame:
+    """從 scan_stocks 結果建構推薦記錄 DataFrame"""
+    ranked = scan_result["ranked"]
+    report_date = scan_result["report_date"]
+    ind_map = scan_result.get("ind_map", {})
+    name_map = scan_result.get("name_map", {})
+
+    fp = collect_version_fingerprint()
+    s_hashes = collect_strategy_hashes()
+    config_snapshot = {
+        "signal_days": DEFAULT_SIGNAL_DAYS,
+        "min_avg_volume": MIN_AVG_VOLUME,
+        "min_agree": 2,
+        "top_n": len(ranked),
+    }
+
+    rows = []
+    for i, r in enumerate(ranked, 1):
+        sid = r["stock_id"]
+        ind = ind_map.get(sid, {})
+        rows.append({
+            "report_date": report_date,
+            "stock_id": sid,
+            "stock_name": name_map.get(sid),
+            "rank": i,
+            "total_score": r["total_score"],
+            "agree_count": r["agree_count"],
+            "total_strategies": r["total_strategies"],
+            "entry_price": r["last_close"],
+            "rsi": r.get("rsi"),
+            "week_return": r.get("week_return"),
+            "avg_volume_20d": r.get("avg_volume_20d"),
+            "sector": ind.get("sector"),
+            "sub_industry": ind.get("sub_industry"),
+            "git_commit": fp["git_commit"],
+            "app_version": fp["app_version"],
+            "strategy_votes": _serialize_votes(r.get("votes", {})),
+            "strategy_hashes": s_hashes,
+            "strategy_weights": dict(STRATEGY_WEIGHTS),
+            "picker_config": config_snapshot,
+        })
+
+    return pd.DataFrame(rows)
+
+
+def save_recommendations(scan_result: dict) -> bool:
+    """將推薦記錄寫入 recommendation_history 表"""
+    ranked = scan_result.get("ranked", [])
+    if not ranked:
+        logger.info("無推薦記錄，跳過儲存")
+        return False
+
+    df = _build_recommendation_df(scan_result)
+    logger.info(f"儲存 {len(df)} 筆推薦記錄 (report_date={scan_result['report_date']})")
+    return save_to_db(df, "recommendation_history")
 
 
 def _load_name_map() -> dict[str, str]:
