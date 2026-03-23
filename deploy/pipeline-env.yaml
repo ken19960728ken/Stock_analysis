@@ -1,0 +1,8 @@
+# Cloud Run Jobs 非敏感環境變數（固定檔案，隨 git 版控）
+# 敏感值（SUPABASE_URL, FINMIND_TOKEN, EMAIL_APP_PASSWORD）由 Secret Manager 注入
+#
+# ⚠️ 修改此檔案後重新部署即可生效，不再依賴 shell 環境變數
+DB_POOL_SIZE: "3"
+DB_POOL_OVERFLOW: "2"
+EMAIL_SENDER: "ken19960728ken@gmail.com"
+EMAIL_RECIPIENTS: "ken19960728ken@gmail.com,dog23698@gmail.com"

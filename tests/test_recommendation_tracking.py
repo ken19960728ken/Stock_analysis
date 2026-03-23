@@ -9,6 +9,7 @@
 """
 
 import hashlib
+import json  # _auto_serialize_json_columns 測試用
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -134,7 +135,7 @@ class TestSaveRecommendations:
         assert "strategy_hashes" in df.columns
         assert "strategy_weights" in df.columns
         assert "picker_config" in df.columns
-        # JSONB 欄位應為 dict（pandas 寫入時自動轉 JSON）
+        # JSONB 欄位在 DataFrame 中應為 dict（save_to_db 寫入時自動序列化）
         assert isinstance(df.iloc[0]["strategy_votes"], dict)
         assert isinstance(df.iloc[0]["strategy_hashes"], dict)
 
@@ -163,10 +164,80 @@ class TestSaveRecommendations:
         from scripts.daily_stock_picker import _build_recommendation_df
         df = _build_recommendation_df(sample_scan_result)
         votes = df.iloc[0]["strategy_votes"]
+        assert isinstance(votes, dict)
         # signal_date 應轉為 ISO 字串或 None
         for name, v in votes.items():
             if v["signal_date"] is not None:
                 assert isinstance(v["signal_date"], str)
+
+
+class TestAutoSerializeJsonColumns:
+    """save_to_db 自動 dict/list → JSON 序列化（防止 psycopg2 JSONB 寫入錯誤）"""
+
+    def test_dict_columns_serialized_to_json_string(self):
+        """dict 欄位應被轉為 JSON 字串"""
+        from core.db import _auto_serialize_json_columns
+        df = pd.DataFrame([{
+            "stock_id": "2330",
+            "score": 3.5,
+            "strategy_votes": {"RSI 反轉": {"score": 1.0}},
+            "picker_config": {"top_n": 20},
+        }])
+        result = _auto_serialize_json_columns(df)
+        assert isinstance(result.iloc[0]["strategy_votes"], str)
+        assert json.loads(result.iloc[0]["strategy_votes"]) == {"RSI 反轉": {"score": 1.0}}
+        # 非 dict 欄位不受影響
+        assert result.iloc[0]["stock_id"] == "2330"
+        assert result.iloc[0]["score"] == 3.5
+
+    def test_list_columns_serialized(self):
+        """list 欄位也應被序列化"""
+        from core.db import _auto_serialize_json_columns
+        df = pd.DataFrame([{"tags": ["a", "b"], "name": "test"}])
+        result = _auto_serialize_json_columns(df)
+        assert isinstance(result.iloc[0]["tags"], str)
+        assert json.loads(result.iloc[0]["tags"]) == ["a", "b"]
+
+    def test_none_values_preserved(self):
+        """NaN/None 值不應被序列化"""
+        from core.db import _auto_serialize_json_columns
+        df = pd.DataFrame([
+            {"data": {"key": "val"}, "empty": None},
+            {"data": None, "empty": None},
+        ])
+        result = _auto_serialize_json_columns(df)
+        assert isinstance(result.iloc[0]["data"], str)
+        assert result.iloc[1]["data"] is None
+
+    def test_original_df_not_mutated(self):
+        """不應修改原始 DataFrame"""
+        from core.db import _auto_serialize_json_columns
+        df = pd.DataFrame([{"data": {"key": "val"}}])
+        _auto_serialize_json_columns(df)
+        assert isinstance(df.iloc[0]["data"], dict)
+
+    def test_recommendation_df_full_roundtrip(self):
+        """完整路徑測試：模擬 recommendation_history 的 JSONB 欄位 → _auto_serialize → JSON 可解析"""
+        from core.db import _auto_serialize_json_columns
+        df = pd.DataFrame([{
+            "report_date": "2026-03-23",
+            "stock_id": "2330",
+            "rank": 1,
+            "strategy_votes": {"RSI 反轉": {"score": 1.0, "signal_date": "2026-03-20"}},
+            "strategy_hashes": {"rsi.py": "abc123", "macd.py": "def456"},
+            "strategy_weights": {"RSI 反轉": 1.0, "價值投資": 0.8},
+            "picker_config": {"signal_days": 5, "top_n": 20},
+        }])
+        serialized = _auto_serialize_json_columns(df)
+        # 所有 JSONB 欄位都應變成合法 JSON 字串
+        for col in ["strategy_votes", "strategy_hashes", "strategy_weights", "picker_config"]:
+            val = serialized.iloc[0][col]
+            assert isinstance(val, str), f"{col} 應為 JSON 字串，實際為 {type(val)}"
+            parsed = json.loads(val)
+            assert isinstance(parsed, dict), f"{col} JSON 解析後應為 dict"
+        # 非 JSONB 欄位不受影響
+        assert serialized.iloc[0]["stock_id"] == "2330"
+        assert serialized.iloc[0]["rank"] == 1
 
 
 class TestReportVersionBlock:

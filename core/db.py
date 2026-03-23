@@ -1,3 +1,4 @@
+import json
 import os
 from urllib.parse import urlparse, urlunparse
 
@@ -20,6 +21,13 @@ VALID_TABLES = frozenset({
     "industry_mapping", "industry_classification", "scan_progress",
     "recommendation_history",  # 選股推薦追蹤
     "scanner_run_log",         # Scanner 執行日誌
+    "day_trading",              # 當日沖銷
+    "dividend_result",          # 除息結果
+    "total_return_index",       # 含息報酬指數
+    "stock_delisting",          # 下市櫃
+    "securities_trader_info",   # 券商資訊（靜態）
+    "chip_broker",              # 券商分點買賣（Sponsor）
+    "chip_gov_bank",            # 官股行庫買賣（Sponsor）
 })
 
 
@@ -135,14 +143,34 @@ def _save_chunk(df_chunk, table_name, chunksize):
     return False
 
 
+def _auto_serialize_json_columns(df):
+    """自動將 DataFrame 中的 dict/list 欄位序列化為 JSON 字串。
+
+    psycopg2 無法直接處理 Python dict/list → PostgreSQL JSONB，
+    必須先轉為 JSON 字串，PostgreSQL 會自動將 TEXT 轉為 JSONB。
+    在 save_to_db 統一處理，避免每個呼叫端都要記得 json.dumps()。
+    """
+    df = df.copy()
+    for col in df.columns:
+        sample = df[col].dropna().head(1)
+        if not sample.empty and isinstance(sample.iloc[0], (dict, list)):
+            df[col] = df[col].apply(
+                lambda x: json.dumps(x, ensure_ascii=False, default=str)
+                if isinstance(x, (dict, list)) else x
+            )
+    return df
+
+
 def save_to_db(df, table_name, chunksize=500):
     """封裝 to_sql，統一寫入邏輯（自動忽略重複資料）
 
-    遇到連線斷線時，重置連線池並重試一次。
+    - 自動將 dict/list 欄位序列化為 JSON 字串（防止 psycopg2 JSONB 寫入錯誤）
+    - 遇到連線斷線時，重置連線池並重試一次。
     """
     if df is None or df.empty:
         return False
     _validate_table_name(table_name)
+    df = _auto_serialize_json_columns(df)
     return _save_chunk(df, table_name, chunksize)
 
 

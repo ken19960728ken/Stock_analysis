@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 部署 Cloud Run Jobs: stock-data + stock-report
+# 部署 Cloud Run Jobs: stock-data + stock-report + stock-fundamental
 # 同一個 Docker image，不同 CMD
-# 敏感變數由 Secret Manager 注入，非敏感變數由 YAML 環境變數檔傳入
+# 敏感變數由 Secret Manager 注入，非敏感變數由 deploy/pipeline-env.yaml 傳入
 # 用法: bash deploy/deploy-pipeline.sh
 # 前置: bash deploy/setup-secrets.sh（建立 secrets + 授權）
 # ==============================================================================
@@ -12,6 +12,24 @@ PROJECT_ID="${GCP_PROJECT_ID:?請設定 GCP_PROJECT_ID 環境變數}"
 REGION="${GCP_REGION:-asia-east1}"
 REPO_NAME="${AR_REPO_NAME:-stock-analysis}"
 IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/stock-pipeline"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/pipeline-env.yaml"
+
+# 檢查環境變數檔案存在
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ 找不到 $ENV_FILE，請確認檔案存在"
+    exit 1
+fi
+
+# 檢查必要的 Email 變數已寫在 YAML 中
+if ! grep -q "EMAIL_SENDER" "$ENV_FILE" || ! grep -q "EMAIL_RECIPIENTS" "$ENV_FILE"; then
+    echo "❌ $ENV_FILE 缺少 EMAIL_SENDER 或 EMAIL_RECIPIENTS，stock-report 將無法寄信"
+    exit 1
+fi
+
+echo "=== 環境變數檔 ==="
+cat "$ENV_FILE"
+echo ""
 
 # 從 pyproject.toml 讀取版本號
 VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
@@ -26,19 +44,6 @@ docker buildx build --platform linux/amd64 -f Dockerfile.pipeline \
     --push .
 
 IMAGE="${IMAGE_BASE}:${IMAGE_TAG}"
-
-echo "=== 產生環境變數檔（僅非敏感值） ==="
-ENV_FILE=$(mktemp /tmp/pipeline-env-XXXXXX.yaml)
-trap "rm -f $ENV_FILE" EXIT
-
-cat > "$ENV_FILE" <<EOF
-DB_POOL_SIZE: "3"
-DB_POOL_OVERFLOW: "2"
-EOF
-
-[ -n "${EMAIL_SENDER:-}" ] && echo "EMAIL_SENDER: \"${EMAIL_SENDER}\"" >> "$ENV_FILE"
-[ -n "${EMAIL_RECIPIENTS:-}" ] && echo "EMAIL_RECIPIENTS: \"${EMAIL_RECIPIENTS}\"" >> "$ENV_FILE"
-# 敏感值（SUPABASE_URL, FINMIND_TOKEN, EMAIL_APP_PASSWORD）由 Secret Manager 注入
 
 # --- Helper: 建立或更新 Job ---
 deploy_job() {
@@ -86,8 +91,11 @@ deploy_job "stock-fundamental" "1Gi" "1" "7200s" \
     "SUPABASE_URL=supabase-url:latest,FINMIND_TOKEN=finmind-token:latest" \
     "--daily-fundamental"
 
-echo "=== 完成 ==="
+echo ""
+echo "=== 部署完成 ==="
 echo "版本: ${VERSION} | 映像標籤: ${IMAGE_TAG}"
+echo "環境變數檔: ${ENV_FILE}"
+echo ""
 echo "手動觸發:"
 echo "  gcloud run jobs execute stock-data --region=$REGION --project=$PROJECT_ID"
 echo "  gcloud run jobs execute stock-report --region=$REGION --project=$PROJECT_ID"
