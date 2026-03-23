@@ -44,7 +44,11 @@ def get_fm_loader():
 
 
 def get_api_usage():
-    """查詢 FinMind API 使用量，回傳 (user_count, api_request_limit)"""
+    """查詢 FinMind API 使用量，回傳 (user_count, api_request_limit)。
+
+    VIP Token 限額 6,000 次/小時，每小時重置。
+    user_count 為本小時已使用次數，api_request_limit 為上限。
+    """
     token = get_fm_token()
     if not token:
         logger.warning("無 FINMIND_TOKEN，無法查詢 API 使用量")

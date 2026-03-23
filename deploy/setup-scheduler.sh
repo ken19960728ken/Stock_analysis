@@ -52,10 +52,17 @@ setup_scheduler "trigger-stock-report" "stock-report" \
     "40 10 * * 1-5" \
     "每日 18:40 台北時間觸發 stock-report Job（週一至五）"
 
+# 排程 3: 季報增量更新 — 19:00 UTC+8（季報公布月：2/3/5/8/11 的週一至五）
+setup_scheduler "trigger-stock-fundamental" "stock-fundamental" \
+    "0 11 * 2,3,5,8,11 1-5" \
+    "季報公布月 19:00 台北時間觸發 stock-fundamental Job（2/3/5/8/11 月，週一至五）"
+
 echo "=== 完成 ==="
 echo "排程:"
-echo "  trigger-stock-data:   30 10 * * 1-5 UTC (= 18:30 UTC+8)"
-echo "  trigger-stock-report: 40 10 * * 1-5 UTC (= 18:40 UTC+8)"
+echo "  trigger-stock-data:        30 10 * * 1-5 UTC (= 18:30 UTC+8)"
+echo "  trigger-stock-report:      40 10 * * 1-5 UTC (= 18:40 UTC+8)"
+echo "  trigger-stock-fundamental: 0 11 * 2,3,5,8,11 1-5 UTC (= 19:00 UTC+8，季報公布月)"
 echo "手動觸發:"
 echo "  gcloud scheduler jobs run trigger-stock-data --location=$REGION --project=$PROJECT_ID"
 echo "  gcloud scheduler jobs run trigger-stock-report --location=$REGION --project=$PROJECT_ID"
+echo "  gcloud scheduler jobs run trigger-stock-fundamental --location=$REGION --project=$PROJECT_ID"

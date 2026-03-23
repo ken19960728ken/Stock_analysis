@@ -55,7 +55,12 @@ def _consume_budget():
 # ============================================================================
 
 class RateLimiter:
-    """統一限速器，根據有無 Token 與 API 來源自動調整延遲"""
+    """統一限速器，根據有無 Token 與 API 來源自動調整延遲。
+
+    注意：此延遲為人為保守設定，用於避免短時間內過多請求觸發 429。
+    FinMind VIP Token 實際限額為 6,000 次/小時（每小時重置），
+    可透過 get_api_usage() 查詢剩餘額度。
+    """
 
     def __init__(self, source="finmind"):
         """
@@ -68,7 +73,12 @@ class RateLimiter:
         if self.source == "yahoo":
             self.delay_min = 0.8
             self.delay_max = 1.5
+        elif self.source == "finmind_fast":
+            # 季報增量更新專用：較短間隔，仍在 6,000 次/小時限額內安全
+            self.delay_min = 0.5
+            self.delay_max = 1.0
         elif get_fm_token():
+            # 人為保守延遲，非 API 限額（實際上限 6,000 次/小時）
             self.delay_min = 1.5
             self.delay_max = 2.5
         else:
@@ -92,7 +102,7 @@ class RateLimiter:
 
         FinMind 來源會檢查並消耗預算，Yahoo 不受影響。
         """
-        if self.source == "finmind":
+        if self.source in ("finmind", "finmind_fast"):
             with _budget_lock:
                 if _budget_remaining is not None and _budget_remaining <= 0:
                     raise BudgetExhaustedError("FinMind API 預算已用盡")
@@ -100,7 +110,7 @@ class RateLimiter:
         for attempt in range(1, max_retries + 1):
             try:
                 result = fn()
-                if self.source == "finmind":
+                if self.source in ("finmind", "finmind_fast"):
                     _consume_budget()
                 return result
             except KeyError as e:

@@ -35,6 +35,7 @@ uv run python main.py --scanner all            # 依序執行全部 scanner
 uv run python main.py --daily                  # 手動執行今日更新（資料抓取 + 選股報告，向後相容）
 uv run python main.py --daily-data             # 僅資料抓取（價格 + 籌碼 + 估值面）
 uv run python main.py --daily-report           # 僅選股報告 + Email 推送
+uv run python main.py --daily-fundamental      # 季報增量更新（季報公布月自動執行）
 
 # === 工具指令 ===
 uv run python main.py --analysis               # 啟動量化分析平台 (http://localhost:8501)
@@ -78,6 +79,9 @@ uv run python -m scanners.chip_scanner                   # 籌碼面
 uv run python -m scanners.chip_scanner --test 2330       # 測試單支
 uv run python -m scanners.valuation_scanner              # 估值面
 uv run python -m scanners.industry_scanner               # 產業分類（兩層：大類 + 次產業）
+uv run python -m scanners.fundamental_updater            # 季報增量更新（預設今天）
+uv run python -m scanners.fundamental_updater --force    # 強制執行（跳過月份檢查）
+uv run python -m scanners.fundamental_updater --date 2026-03-23  # 指定日期
 ```
 
 Run tests: `uv run pytest tests/ -v`. No linter is configured.
@@ -178,11 +182,11 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `.streamlit/config.toml` | Streamlit 雲端配置（headless, 0.0.0.0:8501） |
 | `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry + Secret Manager） |
 | `deploy/setup-secrets.sh` | 建立 Secret Manager Secrets（從 .env 讀取 4 個敏感值 + 授權 SA） |
-| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report 兩個 Job（Secret Manager 注入敏感變數） |
+| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report + stock-fundamental 三個 Job（Secret Manager 注入敏感變數） |
 | `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（Secret Manager 注入敏感變數） |
 | `deploy/pre-deploy-check.sh` | 部署前檢查（Git 乾淨、SemVer 格式、Tag 不重複、測試通過、CHANGELOG 有更新） |
 | `deploy/release.sh` | 一站式發布腳本（pre-check → git tag → push → deploy → 摘要） |
-| `deploy/setup-scheduler.sh` | Cloud Scheduler 雙排程（stock-data 18:30 + stock-report 18:40 UTC+8） |
+| `deploy/setup-scheduler.sh` | Cloud Scheduler 三排程（stock-data 18:30 + stock-report 18:40 + stock-fundamental 19:00 季報公布月 UTC+8） |
 | `deploy/部署流程.md` | 完整部署文件（含環境版本 + 版本管控 + 踩坑紀錄） |
 
 ### Dashboard 模組 `dashboard/`
@@ -225,6 +229,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `valuation_scanner.py` | FinMind | `month_revenue`, `stock_per`, `market_value` |
 | `industry_scanner.py` | FinMind + JSON | `industry_classification`, `industry_mapping` |
 | `daily_updater.py` | FinMind (批量) | `daily_price` + 6 個 chip 表 |
+| `fundamental_updater.py` | FinMind (逐股) | `financial_reports`（季報增量更新，DB 差集策略） |
 
 ### Database Tables (Supabase)
 
@@ -259,6 +264,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_chip_scanner.py` | ChipScanner 單元測試 |
 | `test_valuation_scanner.py` | ValuationScanner 單元測試 |
 | `test_daily_updater.py` | DailyUpdater 測試（21 項） |
+| `test_fundamental_updater.py` | FundamentalUpdater 季報增量更新測試（39 項） |
 | `test_all_strategies.py` | 12 個策略獨立單元測試（60 項） |
 | `test_strategies.py` | 4 個策略深度測試 + 多因子 Z-Score（27 項） |
 | `test_backtester.py` | 回測引擎測試 |
@@ -318,12 +324,12 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - All strategies inherit from `Strategy` ABC（`analysis/strategies/base.py`），實作 `generate_signals(df, **params) -> pd.DataFrame`。
 - Stock codes are converted between internal format (e.g. `2330`) and Yahoo format (`2330.TW` for listed, `.TWO` for OTC).
 - 需要遍歷全市場股票時，應從 `twstock_code` 查詢（按 `商品類型` 過濾），不要從 `daily_price` 做 DISTINCT（含 4.7 萬筆權證）。
-- `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / Yahoo 0.8-1.5s，含 429 自動重試。
+- `RateLimiter` 統一管理 API 限速：FinMind 有 Token 1.5-2.5s / 無 Token 4-6s / `finmind_fast` 0.5-1.0s（季報增量更新專用）/ Yahoo 0.8-1.5s，含 429 自動重試。此延遲為人為保守設定，非 API 限額。FinMind VIP Token 實際限額為 **6,000 次/小時**（每小時重置），可透過 `get_api_usage()` 查詢。
 - DB engine 和 FinMind DataLoader 均為單例模式，避免重複初始化。
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- **Cloud Run 雙 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送。兩者獨立排程，資料失敗不影響報告（可用前一天資料），報告可獨立重跑。`--daily` 為向後相容旗標，依序執行兩者。交易日判斷使用 TWSE 官方開休市行事曆 API。
+- **Cloud Run 三 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送；`stock-fundamental`（`--daily-fundamental`，19:00 UTC+8，僅 2/3/5/8/11 月）負責季報增量更新，以 DB 差集策略逐股抓取缺漏季報（timeout 7200s）。前兩者每日排程，季報更新僅在公布月排程。`--daily` 為向後相容旗標，依序執行資料抓取 + 選股報告。交易日判斷使用 TWSE 官方開休市行事曆 API。
 - 每日排程由 Cloud Scheduler 觸發（18:30 / 18:40 UTC+8），`--daily-data` 和 `--daily-report` 各自執行完即退出。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 - `--pick-stocks` 單獨執行只產報告不寄信；`--daily-report` 會自動寄信。手動補產報告後可用 `--daily-report` 或另外呼叫 `send_report_email()` 寄送。
 

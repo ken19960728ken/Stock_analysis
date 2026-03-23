@@ -221,6 +221,7 @@ def mock_db_save(monkeypatch):
     monkeypatch.setattr("scanners.price_scanner.save_to_db", mock_fn)
     monkeypatch.setattr("scanners.fundamental_scanner.save_to_db", mock_fn)
     monkeypatch.setattr("scanners.daily_updater.save_to_db", mock_fn)
+    monkeypatch.setattr("scanners.fundamental_updater.save_to_db", mock_fn)
     return mock_fn
 
 
@@ -348,6 +349,10 @@ def mock_finmind_client(monkeypatch, mock_fm_loader):
         "scanners.daily_updater.get_fm_loader",
         lambda: mock_fm_loader,
     )
+    monkeypatch.setattr(
+        "scanners.fundamental_updater.get_fm_loader",
+        lambda: mock_fm_loader,
+    )
     return mock_fm_loader
 
 
@@ -396,6 +401,10 @@ def mock_rate_limiter(monkeypatch):
     )
     monkeypatch.setattr(
         "scanners.daily_updater.RateLimiter",
+        MockRateLimiter,
+    )
+    monkeypatch.setattr(
+        "scanners.fundamental_updater.RateLimiter",
         MockRateLimiter,
     )
 

@@ -78,7 +78,7 @@ uv sync --extra analysis
 
 ```env
 SUPABASE_URL=postgresql://user:password@host:port/dbname   # 必填
-FINMIND_TOKEN=your_finmind_jwt_token                       # 選填，有 Token 限速 1.5~2.5s，無 Token 4~6s
+FINMIND_TOKEN=your_finmind_jwt_token                       # 選填，VIP 限額 6,000 次/小時（每小時重置），人為限速 1.5~2.5s/call
 FRED_API_KEY=your_fred_api_key                             # 選填，市場總覽頁面的經濟指標
 EMAIL_SENDER=you@gmail.com                                 # 選填，每日選股報告 Email 推送
 EMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx                     # 選填，Gmail 應用程式密碼

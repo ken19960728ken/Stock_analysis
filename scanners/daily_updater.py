@@ -1,8 +1,11 @@
 """
-每日增量更新 — 批量取得全市場當日價格 + 籌碼 + 估值面資料
+每日增量更新 — 批量取得全市場當日價格 + 籌碼 + 估值面 + 月營收資料
 
 核心優化：FinMind 支援不帶 stock_id 的批量查詢，一次取得所有股票某日資料。
-原本 1826 × 7 = 12,782 次 API 呼叫，縮減為 7 次，耗時從 12.5 小時降至 < 1 分鐘。
+原本 1826 × 7 = 12,782 次 API 呼叫，縮減為 8 次，耗時從 12.5 小時降至 < 1 分鐘。
+
+月營收特殊處理：各公司公布時間不同（法定期限為次月 10 號），
+每天都抓最近 2 個月資料，DB Unique Key 自動去重，確保不遺漏晚公布的公司。
 
 Usage:
     python -m scanners.daily_updater                  # 更新今天
@@ -12,7 +15,7 @@ import argparse
 import json
 import time
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
@@ -137,10 +140,19 @@ class DailyUpdater:
         # Step 3: 估值面資料（stock_per + market_value）
         valuation_results = self._backfill_valuation(date_str)
 
-        # Step 4: 結算報告
+        # Step 4: 月營收（每天抓最近 2 個月，DB Unique Key 自動去重）
+        # 各公司公布時間不同（法定期限次月 10 號），每天抓確保不遺漏晚公布的公司
+        revenue_ok = self._fetch_revenue(target_date)
+
+        # Step 5: 結算報告
         valuation_ok = sum(valuation_results.values())
-        success_count = (1 if price_ok else 0) + sum(chip_results.values()) + valuation_ok
-        total_count = 1 + len(CHIP_DATASETS) + len(valuation_results)
+        success_count = (
+            (1 if price_ok else 0)
+            + sum(chip_results.values())
+            + valuation_ok
+            + (1 if revenue_ok else 0)
+        )
+        total_count = 1 + len(CHIP_DATASETS) + len(valuation_results) + 1
 
         logger.info(f"{'='*60}")
         logger.info(
@@ -156,6 +168,7 @@ class DailyUpdater:
         for _, table_name, label in self.VALUATION_DATASETS:
             ok = valuation_results.get(table_name, False)
             logger.info(f"  [{label:10s}]  {'✓' if ok else '✗'}")
+        logger.info(f"  [{'月營收':10s}]  {'✓' if revenue_ok else '✗'}")
         logger.info(f"{'='*60}")
 
         return True
@@ -343,6 +356,68 @@ class DailyUpdater:
             self.limiter.wait()
 
         return results
+
+    # ------------------------------------------------------------------
+    # 月營收（每天抓，DB 去重）
+    # ------------------------------------------------------------------
+
+    def _fetch_revenue(self, target_date):
+        """批量抓取最近 2 個月的月營收。
+
+        各公司公布上月營收的時間不同（法定期限為次月 10 號），
+        因此每天都抓最近 2 個月的資料，由 DB Unique Key (stock_id, date, country)
+        自動去重（INSERT ... ON CONFLICT DO NOTHING）。
+        這樣可確保：
+        - 早公布的公司：第一天就入庫，後續重複資料被 skip
+        - 晚公布的公司：延遲幾天後入庫，不會遺漏
+
+        API 成本：單次批量 call < 1 秒，每日多一次完全可接受。
+        """
+        # 往前推 60 天，確保涵蓋前 2 個月的營收公布期
+        fetch_start = (target_date - timedelta(days=60)).strftime("%Y-%m-%d")
+        fetch_end = target_date.strftime("%Y-%m-%d")
+
+        t0 = time.time()
+        logger.info(f"[月營收] 批量查詢 {fetch_start} ~ {fetch_end} ...")
+
+        try:
+            fetch_fn = self.fm_loader.taiwan_stock_month_revenue
+
+            def _call():
+                return fetch_fn(start_date=fetch_start, end_date=fetch_end)
+
+            df = self.limiter.call_with_retry(_call)
+        except Exception as e:
+            logger.error(
+                f"[月營收] API 異常: {type(e).__name__}: {e} "
+                f"(耗時 {_elapsed(t0)})"
+            )
+            self.limiter.wait()
+            return False
+
+        if df is None or df.empty:
+            status = "None" if df is None else "空 DataFrame"
+            logger.info(f"[月營收] API 回傳 {status} (耗時 {_elapsed(t0)})")
+            self.limiter.wait()
+            return False
+
+        logger.info(
+            f"[月營收] API 回傳 {len(df)} 筆, "
+            f"stock_id 數: {df['stock_id'].nunique() if 'stock_id' in df.columns else '?'} "
+            f"(耗時 {_elapsed(t0)})"
+        )
+
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+
+        t1 = time.time()
+        ok = save_to_db(df, "month_revenue")
+        logger.info(
+            f"[月營收] DB 寫入 {'成功' if ok else '失敗'}: {len(df) if ok else 0} 筆 "
+            f"(耗時 {_elapsed(t1)})"
+        )
+        self.limiter.wait()
+        return ok
 
 
 # ============================================================================

@@ -284,6 +284,12 @@ def run_daily_report():
         logger.error(f"選股報告產出異常: {e}")
 
 
+def run_daily_fundamental():
+    """執行季報增量更新"""
+    from scanners.fundamental_updater import FundamentalUpdater
+    FundamentalUpdater().run()
+
+
 def main():
     parser = argparse.ArgumentParser(description="台灣股市量化交易系統 — 資料撈取")
     parser.add_argument(
@@ -326,6 +332,11 @@ def main():
         "--daily-report",
         action="store_true",
         help="僅執行每日選股報告 + Email 推送",
+    )
+    parser.add_argument(
+        "--daily-fundamental",
+        action="store_true",
+        help="季報增量更新（季報公布月自動執行，--force 可跳過月份檢查）",
     )
     parser.add_argument(
         "--dashboard",
@@ -472,6 +483,11 @@ def main():
     # --daily-report：僅執行選股報告 + Email
     if args.daily_report:
         run_daily_report()
+        return
+
+    # --daily-fundamental：季報增量更新
+    if args.daily_fundamental:
+        run_daily_fundamental()
         return
 
     # --daily：向後相容，資料抓取 + 選股報告

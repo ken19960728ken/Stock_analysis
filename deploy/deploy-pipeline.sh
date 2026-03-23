@@ -81,10 +81,16 @@ deploy_job "stock-report" "2Gi" "2" "1800s" \
     "SUPABASE_URL=supabase-url:latest,FINMIND_TOKEN=finmind-token:latest,EMAIL_APP_PASSWORD=email-app-password:latest" \
     "--daily-report"
 
+# Job 3: stock-fundamental — 季報增量更新
+deploy_job "stock-fundamental" "1Gi" "1" "7200s" \
+    "SUPABASE_URL=supabase-url:latest,FINMIND_TOKEN=finmind-token:latest" \
+    "--daily-fundamental"
+
 echo "=== 完成 ==="
 echo "版本: ${VERSION} | 映像標籤: ${IMAGE_TAG}"
 echo "手動觸發:"
 echo "  gcloud run jobs execute stock-data --region=$REGION --project=$PROJECT_ID"
 echo "  gcloud run jobs execute stock-report --region=$REGION --project=$PROJECT_ID"
+echo "  gcloud run jobs execute stock-fundamental --region=$REGION --project=$PROJECT_ID"
 echo "回滾方式:"
 echo "  gcloud run jobs update stock-data --image=${IMAGE_BASE}:<舊版標籤> --region=$REGION --project=$PROJECT_ID"

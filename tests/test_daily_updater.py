@@ -404,3 +404,77 @@ class TestDailyUpdaterRateLimiting:
         updater._fetch_chip("2023-01-03")
         # wait() should be called once per chip dataset = 6 times
         assert updater.limiter.wait.call_count == len(CHIP_DATASETS)
+
+
+# ============================================================================
+# TestDailyUpdaterRevenueAutoFetch
+# ============================================================================
+
+
+class TestDailyUpdaterRevenueFetch:
+    """Test _fetch_revenue daily batch fetch logic"""
+
+    def test_fetch_revenue_success(
+        self, mock_finmind_client, mock_rate_limiter, mock_db_save
+    ):
+        """Successful revenue fetch with data"""
+        updater = DailyUpdater()
+        revenue_df = pd.DataFrame({
+            "date": ["2023-01-01", "2023-01-01"],
+            "stock_id": ["2330", "2317"],
+            "revenue": [100000, 50000],
+        })
+        updater.fm_loader.taiwan_stock_month_revenue.return_value = revenue_df
+
+        result = updater._fetch_revenue(datetime.date(2023, 2, 10))
+
+        assert result is True
+        updater.fm_loader.taiwan_stock_month_revenue.assert_called_once()
+        # 查詢範圍應為 60 天前 ~ 今天
+        call_kwargs = updater.fm_loader.taiwan_stock_month_revenue.call_args
+        assert call_kwargs.kwargs.get("start_date") == "2022-12-12"
+        assert call_kwargs.kwargs.get("end_date") == "2023-02-10"
+
+    def test_fetch_revenue_api_failure(
+        self, mock_finmind_client, mock_rate_limiter, mock_db_save
+    ):
+        """When API call fails, returns False"""
+        updater = DailyUpdater()
+        updater.fm_loader.taiwan_stock_month_revenue.side_effect = Exception("API down")
+
+        result = updater._fetch_revenue(datetime.date(2023, 2, 10))
+
+        assert result is False
+
+    def test_fetch_revenue_empty_response(
+        self, mock_finmind_client, mock_rate_limiter, mock_db_save
+    ):
+        """When API returns empty DataFrame, returns False"""
+        updater = DailyUpdater()
+        updater.fm_loader.taiwan_stock_month_revenue.return_value = pd.DataFrame()
+
+        result = updater._fetch_revenue(datetime.date(2023, 2, 10))
+
+        assert result is False
+
+    def test_fetch_revenue_none_response(
+        self, mock_finmind_client, mock_rate_limiter, mock_db_save
+    ):
+        """When API returns None, returns False"""
+        updater = DailyUpdater()
+        updater.fm_loader.taiwan_stock_month_revenue.return_value = None
+
+        result = updater._fetch_revenue(datetime.date(2023, 2, 10))
+
+        assert result is False
+
+    def test_fetch_revenue_waits_after_call(
+        self, mock_finmind_client, mock_rate_limiter, mock_db_save
+    ):
+        """limiter.wait() is called after revenue fetch"""
+        updater = DailyUpdater()
+        updater.fm_loader.taiwan_stock_month_revenue.return_value = pd.DataFrame()
+
+        updater._fetch_revenue(datetime.date(2023, 2, 10))
+
+        assert updater.limiter.wait.call_count >= 1
