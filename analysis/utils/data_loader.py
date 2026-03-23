@@ -9,6 +9,57 @@ import streamlit as st
 
 from core.db import get_engine, safe_read_sql
 
+
+# ---------------------------------------------------------------------------
+# 月營收 YoY 計算（FinMind API 不提供 YoY，須自行計算）
+# ---------------------------------------------------------------------------
+
+def _compute_revenue_yoy(df: pd.DataFrame) -> pd.DataFrame:
+    """從 revenue + revenue_year + revenue_month 計算月營收年增率。
+
+    新增 month_revenue_year_on_year 欄位（百分比，如 15.3 表示 +15.3%）。
+    需要 revenue, revenue_year, revenue_month 三個欄位。
+    """
+    if df.empty:
+        return df
+    required = {"revenue", "revenue_year", "revenue_month"}
+    if not required.issubset(df.columns):
+        return df
+
+    result = df.copy()
+
+    # 建立 (stock_id, year, month) → revenue 查找表
+    has_sid = "stock_id" in result.columns
+    if has_sid:
+        lookup = result.dropna(subset=["revenue", "revenue_year", "revenue_month"])
+        lookup_map = lookup.set_index(
+            ["stock_id", "revenue_year", "revenue_month"]
+        )["revenue"].to_dict()
+
+        prev_year = result["revenue_year"] - 1
+        prev_keys = list(zip(result["stock_id"], prev_year, result["revenue_month"]))
+    else:
+        lookup = result.dropna(subset=["revenue", "revenue_year", "revenue_month"])
+        lookup_map = lookup.set_index(
+            ["revenue_year", "revenue_month"]
+        )["revenue"].to_dict()
+
+        prev_year = result["revenue_year"] - 1
+        prev_keys = list(zip(prev_year, result["revenue_month"]))
+
+    prev_rev = pd.Series(
+        [lookup_map.get(k) for k in prev_keys],
+        index=result.index, dtype=float,
+    )
+    mask = prev_rev.notna() & (prev_rev > 0) & result["revenue"].notna()
+    result["month_revenue_year_on_year"] = pd.NA
+    result.loc[mask, "month_revenue_year_on_year"] = (
+        (result.loc[mask, "revenue"].astype(float) / prev_rev.loc[mask] - 1) * 100
+    ).round(2)
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # FRED 經濟指標配置
 # ---------------------------------------------------------------------------
@@ -271,12 +322,13 @@ def load_dividend_history(stock_id: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=300)
 def load_month_revenue(stock_id: str) -> pd.DataFrame:
-    """月營收"""
+    """月營收（含自行計算的 month_revenue_year_on_year）"""
     sql = "SELECT * FROM month_revenue WHERE stock_id = %(sid)s ORDER BY date"
     try:
         df = safe_read_sql(sql, params={"sid": stock_id})
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
+        df = _compute_revenue_yoy(df)
         return df
     except Exception:
         return pd.DataFrame()
@@ -379,14 +431,26 @@ def load_latest_shareholding_summary_all() -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def compute_revenue_growth_all() -> pd.DataFrame:
-    """月營收年增率"""
+    """月營收年增率（自行計算 YoY，FinMind API 不提供此欄位）"""
     sql = """
-    SELECT DISTINCT ON (stock_id) stock_id, revenue, month_revenue_year_on_year as revenue_yoy
+    SELECT stock_id, date, revenue, revenue_month, revenue_year
     FROM month_revenue
-    ORDER BY stock_id, date DESC
+    WHERE date >= CURRENT_DATE - INTERVAL '450 days'
+    ORDER BY stock_id, date
     """
     try:
-        return safe_read_sql(sql)
+        df = safe_read_sql(sql)
+        if df.empty:
+            return pd.DataFrame()
+        df = _compute_revenue_yoy(df)
+        # 取每支股票最新一筆
+        latest = df.sort_values("date").drop_duplicates(subset=["stock_id"], keep="last")
+        result = latest[["stock_id", "revenue"]].copy()
+        if "month_revenue_year_on_year" in latest.columns:
+            result["revenue_yoy"] = latest["month_revenue_year_on_year"].values
+        else:
+            result["revenue_yoy"] = pd.NA
+        return result.reset_index(drop=True)
     except Exception:
         return pd.DataFrame()
 
@@ -480,15 +544,21 @@ def load_latest_per_all() -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def load_latest_revenue_all() -> pd.DataFrame:
-    """取得所有股票最新月營收"""
+    """取得所有股票最新月營收（含自行計算的 YoY）"""
     sql = """
-    SELECT DISTINCT ON (stock_id) *
+    SELECT stock_id, date, country, revenue, revenue_month, revenue_year
     FROM month_revenue
-    WHERE date >= CURRENT_DATE - INTERVAL '90 days'
-    ORDER BY stock_id, date DESC
+    WHERE date >= CURRENT_DATE - INTERVAL '450 days'
+    ORDER BY stock_id, date
     """
     try:
-        return safe_read_sql(sql)
+        df = safe_read_sql(sql)
+        if df.empty:
+            return pd.DataFrame()
+        df = _compute_revenue_yoy(df)
+        # 取每支股票最新一筆
+        latest = df.sort_values("date").drop_duplicates(subset=["stock_id"], keep="last")
+        return latest.reset_index(drop=True)
     except Exception:
         return pd.DataFrame()
 
@@ -683,17 +753,24 @@ def load_industry_mapping() -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def load_month_revenue_all(start_date: str = None) -> pd.DataFrame:
-    """全市場月營收"""
-    sql = "SELECT * FROM month_revenue"
-    params = {}
+    """全市場月營收（含自行計算的 month_revenue_year_on_year）"""
+    # 多抓 450 天以便計算 YoY（需要去年同期數據）
     if start_date:
-        sql += " WHERE date >= %(start)s"
-        params["start"] = start_date
-    sql += " ORDER BY stock_id, date"
+        from datetime import datetime, timedelta
+        yoy_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=400)).strftime("%Y-%m-%d")
+        sql = "SELECT * FROM month_revenue WHERE date >= %(start)s ORDER BY stock_id, date"
+        params = {"start": yoy_start}
+    else:
+        sql = "SELECT * FROM month_revenue ORDER BY stock_id, date"
+        params = {}
     try:
         df = safe_read_sql(sql, params=params)
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
+        df = _compute_revenue_yoy(df)
+        # 若有 start_date，過濾回原始範圍
+        if start_date:
+            df = df[df["date"] >= pd.Timestamp(start_date)].reset_index(drop=True)
         return df
     except Exception:
         return pd.DataFrame()

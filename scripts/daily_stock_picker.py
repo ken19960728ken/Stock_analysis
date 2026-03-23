@@ -29,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.strategies import STRATEGY_MAP
+from analysis.utils.data_loader import _compute_revenue_yoy
 from analysis.utils.peer_comparison import calc_peer_percentile, get_peers
 from core.constants import apply_publication_delay
 from core.db import get_engine, safe_read_sql, save_to_db
@@ -110,15 +111,18 @@ def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, 
         sql += " ORDER BY stock_id, date"
         tables[tbl] = safe_read_sql(sql, params=p)
 
-    # month_revenue — 往前推 90 天（merge_asof 需要歷史月度資料前向填充）
-    rev_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=90)).strftime("%Y-%m-%d")
+    # month_revenue — 往前推 450 天（需要去年同期資料計算 YoY）
+    rev_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=450)).strftime("%Y-%m-%d")
     sql = "SELECT * FROM month_revenue WHERE date >= %(sd)s"
-    p = {"sd": rev_start}
+    p: dict = {"sd": rev_start}
     if end_date:
         sql += " AND date <= %(ed)s"
         p["ed"] = end_date
     sql += " ORDER BY stock_id, date"
-    tables["month_revenue"] = safe_read_sql(sql, params=p)
+    rev_df = safe_read_sql(sql, params=p)
+    # FinMind 不提供 YoY，自行計算
+    rev_df = _compute_revenue_yoy(rev_df)
+    tables["month_revenue"] = rev_df
 
     return tables
 
@@ -950,9 +954,14 @@ def build_report(scan_result: dict, output_dir: str | None = None) -> str | None
                 "SELECT DISTINCT ON (stock_id) stock_id, per, pbr, dividend_yield "
                 "FROM stock_per ORDER BY stock_id, date DESC"
             )
-            all_rev = safe_read_sql(
-                "SELECT DISTINCT ON (stock_id) stock_id, month_revenue_year_on_year "
-                "FROM month_revenue ORDER BY stock_id, date DESC"
+            all_rev_raw = safe_read_sql(
+                "SELECT stock_id, date, revenue, revenue_month, revenue_year "
+                "FROM month_revenue WHERE date >= CURRENT_DATE - INTERVAL '450 days' "
+                "ORDER BY stock_id, date"
+            )
+            all_rev = _compute_revenue_yoy(all_rev_raw)
+            all_rev = all_rev.sort_values("date").drop_duplicates(
+                subset=["stock_id"], keep="last"
             )
             all_inst = safe_read_sql(
                 "SELECT DISTINCT ON (stock_id) * FROM chip_institutional ORDER BY stock_id, date DESC"
