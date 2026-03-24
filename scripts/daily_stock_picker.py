@@ -88,26 +88,36 @@ VALID_TABLES = frozenset({
 # 批量資料載入（優化版）
 # ===================================================================
 
+def _load_table_chunked(table_name: str, start_date: str, end_date: str | None = None) -> pd.DataFrame:
+    """分月查詢大表，避免 Supabase 2 分鐘 statement_timeout"""
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d") if end_date else datetime.now()
+
+    chunks = []
+    cursor = start
+    while cursor <= end:
+        # 每段最多 45 天
+        chunk_end = min(cursor + timedelta(days=44), end)
+        sql = f"SELECT * FROM {table_name} WHERE date >= %(sd)s AND date <= %(ed)s"
+        p = {"sd": cursor.strftime("%Y-%m-%d"), "ed": chunk_end.strftime("%Y-%m-%d")}
+        df = safe_read_sql(sql, params=p)
+        if not df.empty:
+            chunks.append(df)
+        cursor = chunk_end + timedelta(days=1)
+
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+
+
 def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, pd.DataFrame]:
     """批量載入所有需要的表格，回傳 {table_name: DataFrame}"""
     tables = {}
 
-    # daily_price — 必須（不在 DB 排序，由 pandas groupby 處理）
-    sql = "SELECT * FROM daily_price WHERE date >= %(sd)s"
-    params: dict = {"sd": start_date}
-    if end_date:
-        sql += " AND date <= %(ed)s"
-        params["ed"] = end_date
-    tables["daily_price"] = safe_read_sql(sql, params=params)
+    # daily_price — 分段查詢避免 Supabase statement_timeout
+    tables["daily_price"] = _load_table_chunked("daily_price", start_date, end_date)
 
-    # chip_institutional, stock_per — 同樣日期範圍
+    # chip_institutional, stock_per — 同樣分段查詢
     for tbl in ["chip_institutional", "stock_per"]:
-        sql = f"SELECT * FROM {tbl} WHERE date >= %(sd)s"
-        p: dict = {"sd": start_date}
-        if end_date:
-            sql += " AND date <= %(ed)s"
-            p["ed"] = end_date
-        tables[tbl] = safe_read_sql(sql, params=p)
+        tables[tbl] = _load_table_chunked(tbl, start_date, end_date)
 
     # month_revenue — 往前推 450 天（需要去年同期資料計算 YoY）
     rev_start = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=450)).strftime("%Y-%m-%d")

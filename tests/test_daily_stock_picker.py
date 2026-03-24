@@ -289,25 +289,30 @@ class TestReportGeneration:
 # ============================================================================
 
 class TestLoadAllTables:
-    """批量載入 4 張表"""
+    """批量載入 4 張表（分段查詢）"""
 
     @patch("scripts.daily_stock_picker.safe_read_sql")
     def test_loads_four_tables(self, mock_sql):
-        """呼叫 4 次 safe_read_sql，分別載入 4 張表"""
+        """回傳包含 4 張表的 dict"""
         mock_sql.return_value = pd.DataFrame({"stock_id": [], "date": []})
         result = _load_all_tables("2023-01-01", "2023-03-01")
         assert set(result.keys()) == {"daily_price", "chip_institutional", "stock_per", "month_revenue"}
-        assert mock_sql.call_count == 4
+        # 分段查詢：每表按 45 天一段，呼叫次數 > 4
+        assert mock_sql.call_count >= 4
 
     @patch("scripts.daily_stock_picker.safe_read_sql")
     def test_month_revenue_earlier_start(self, mock_sql):
-        """month_revenue 的 start_date 比其他表早 ~90 天"""
+        """month_revenue 的查詢範圍比其他表更早（需要去年同期算 YoY）"""
         mock_sql.return_value = pd.DataFrame()
         _load_all_tables("2023-06-01", "2023-09-01")
-        # 第 4 次呼叫（month_revenue）的 sd 參數應 < 2023-06-01
-        rev_call = mock_sql.call_args_list[3]
-        rev_params = rev_call[1].get("params", rev_call[0][1] if len(rev_call[0]) > 1 else {})
-        assert rev_params["sd"] < "2023-06-01"
+        # 找出所有查詢的最早 sd 參數
+        all_sd = []
+        for call in mock_sql.call_args_list:
+            params = call[1].get("params", {})
+            if "sd" in params:
+                all_sd.append(params["sd"])
+        # 至少有一個查詢的 sd 早於 2023-06-01（month_revenue 的 YoY 回溯）
+        assert any(sd < "2023-06-01" for sd in all_sd), f"所有 sd: {all_sd}"
 
 
 # ============================================================================
