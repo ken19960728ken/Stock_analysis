@@ -67,6 +67,7 @@ def get_engine():
         db_url = _ensure_session_mode(db_url)
         pool_size = int(os.environ.get("DB_POOL_SIZE", "5"))
         pool_overflow = int(os.environ.get("DB_POOL_OVERFLOW", "3"))
+        stmt_timeout = int(os.environ.get("DB_STATEMENT_TIMEOUT", "120000"))
         _engine = create_engine(
             db_url,
             pool_pre_ping=True,        # 每次使用前先 ping，偵測斷線自動重連
@@ -75,7 +76,7 @@ def get_engine():
             max_overflow=pool_overflow,
             connect_args={
                 "connect_timeout": 30,  # 連線超時 30 秒
-                "options": "-c statement_timeout=120000",  # 查詢超時 120 秒
+                "options": f"-c statement_timeout={stmt_timeout}",  # 查詢超時（毫秒）
                 "keepalives": 1,        # 啟用 TCP keepalive
                 "keepalives_idle": 30,  # 30 秒 idle 後發送 keepalive
                 "keepalives_interval": 10,  # 每 10 秒重試

@@ -4,5 +4,6 @@
 # ⚠️ 修改此檔案後重新部署即可生效，不再依賴 shell 環境變數
 DB_POOL_SIZE: "3"
 DB_POOL_OVERFLOW: "2"
+DB_STATEMENT_TIMEOUT: "300000"
 EMAIL_SENDER: "ken19960728ken@gmail.com"
 EMAIL_RECIPIENTS: "ken19960728ken@gmail.com,dog23698@gmail.com"
