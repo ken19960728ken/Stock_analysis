@@ -99,7 +99,7 @@ def safe_read_sql(sql, params=None, timeout_ms=None):
     """
     with get_engine().connect() as conn:
         if timeout_ms is not None:
-            conn.execute(text(f"SET LOCAL statement_timeout = {int(timeout_ms)}"))
+            conn.execute(text(f"SET statement_timeout = {int(timeout_ms)}"))
         # 已經是 TextClause 就直接用；字串含 %(...)s 是 psycopg2 格式，不能用 text() 包裝
         if isinstance(sql, str) and "%(" not in sql:
             sql = text(sql)
