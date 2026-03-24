@@ -92,13 +92,12 @@ def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, 
     """批量載入所有需要的表格，回傳 {table_name: DataFrame}"""
     tables = {}
 
-    # daily_price — 必須
+    # daily_price — 必須（不在 DB 排序，由 pandas groupby 處理）
     sql = "SELECT * FROM daily_price WHERE date >= %(sd)s"
     params: dict = {"sd": start_date}
     if end_date:
         sql += " AND date <= %(ed)s"
         params["ed"] = end_date
-    sql += " ORDER BY stock_id, date"
     tables["daily_price"] = safe_read_sql(sql, params=params)
 
     # chip_institutional, stock_per — 同樣日期範圍
@@ -108,7 +107,6 @@ def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, 
         if end_date:
             sql += " AND date <= %(ed)s"
             p["ed"] = end_date
-        sql += " ORDER BY stock_id, date"
         tables[tbl] = safe_read_sql(sql, params=p)
 
     # month_revenue — 往前推 450 天（需要去年同期資料計算 YoY）
@@ -118,7 +116,6 @@ def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, 
     if end_date:
         sql += " AND date <= %(ed)s"
         p["ed"] = end_date
-    sql += " ORDER BY stock_id, date"
     rev_df = safe_read_sql(sql, params=p)
     # FinMind 不提供 YoY，自行計算
     rev_df = _compute_revenue_yoy(rev_df)
