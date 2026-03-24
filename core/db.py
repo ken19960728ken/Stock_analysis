@@ -86,15 +86,20 @@ def get_engine():
     return _engine
 
 
-def safe_read_sql(sql, params=None):
+def safe_read_sql(sql, params=None, timeout_ms=None):
     """安全的 read_sql 包裝：使用 with connect() 確保連線自動歸還，
     避免 pd.read_sql(sql, engine) 在 SQLAlchemy 2.x 下產生 idle in transaction 殭屍連線。
 
     支援兩種參數格式：
     - %(param)s  — psycopg2 原生格式，傳入原始字串
     - :param     — SQLAlchemy text() 格式，已由呼叫端包裝
+
+    timeout_ms: 可選，針對此查詢設定 statement_timeout（毫秒），
+                用 SET LOCAL 覆蓋 Supabase 伺服器端預設值。
     """
     with get_engine().connect() as conn:
+        if timeout_ms is not None:
+            conn.execute(text(f"SET LOCAL statement_timeout = {int(timeout_ms)}"))
         # 已經是 TextClause 就直接用；字串含 %(...)s 是 psycopg2 格式，不能用 text() 包裝
         if isinstance(sql, str) and "%(" not in sql:
             sql = text(sql)

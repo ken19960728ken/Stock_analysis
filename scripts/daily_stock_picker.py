@@ -100,7 +100,7 @@ def _load_table_chunked(table_name: str, start_date: str, end_date: str | None =
         chunk_end = min(cursor + timedelta(days=44), end)
         sql = f"SELECT * FROM {table_name} WHERE date >= %(sd)s AND date <= %(ed)s"
         p = {"sd": cursor.strftime("%Y-%m-%d"), "ed": chunk_end.strftime("%Y-%m-%d")}
-        df = safe_read_sql(sql, params=p)
+        df = safe_read_sql(sql, params=p, timeout_ms=300_000)
         if not df.empty:
             chunks.append(df)
         cursor = chunk_end + timedelta(days=1)
@@ -126,7 +126,7 @@ def _load_all_tables(start_date: str, end_date: str | None = None) -> dict[str, 
     if end_date:
         sql += " AND date <= %(ed)s"
         p["ed"] = end_date
-    rev_df = safe_read_sql(sql, params=p)
+    rev_df = safe_read_sql(sql, params=p, timeout_ms=300_000)
     # FinMind 不提供 YoY，自行計算
     rev_df = _compute_revenue_yoy(rev_df)
     tables["month_revenue"] = rev_df
