@@ -5,7 +5,15 @@
 import os
 
 import pandas as pd
-import streamlit as st
+
+try:
+    import streamlit as st
+except ImportError:
+    # Pipeline 環境（無 streamlit）：用 no-op decorator 替代 @st.cache_data
+    import types
+    st = types.SimpleNamespace(
+        cache_data=lambda **kwargs: (lambda fn: fn),
+    )
 
 from core.db import get_engine, safe_read_sql
 
