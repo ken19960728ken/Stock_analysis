@@ -346,7 +346,7 @@ class TestStrategyRegistration:
 
     def test_total_strategy_count(self):
         from analysis.strategies import STRATEGY_MAP
-        assert len(STRATEGY_MAP) == 23
+        assert len(STRATEGY_MAP) == 25
 
     def test_instantiation(self):
         from analysis.strategies import STRATEGY_MAP

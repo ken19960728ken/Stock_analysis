@@ -103,6 +103,8 @@ DATA_PUBLICATION_DELAY = {
     "financial_reports":      45,   # 季末後 45 天內公布
     "dividend_history":        0,   # 除息日前已公告
     "market_value":            1,   # 隔日公布
+    "chip_broker":             1,   # 隔日公布（券商分點買賣明細）
+    "day_trading":             1,   # 隔日公布（當日沖銷交易統計）
 }
 
 

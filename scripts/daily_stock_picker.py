@@ -69,6 +69,9 @@ STRATEGY_DATA_NEEDS = {
     "營收動能": ["month_revenue", "stock_per"],
     "波動率壓縮突破": [],
     "次產業輪動": ["month_revenue", "chip_institutional"],
+    "當沖情緒反轉": ["day_trading"],
+    "外資連續買超": ["chip_broker"],
+    "散戶vs主力": ["day_trading", "chip_broker"],
 }
 
 DEFAULT_TOP_N = 20
@@ -81,6 +84,7 @@ VALID_TABLES = frozenset({
     "daily_price", "chip_institutional", "stock_per", "month_revenue",
     "twstock_code", "industry_classification",
     "recommendation_history",  # 選股推薦追蹤
+    "chip_broker", "day_trading",
 })
 
 
@@ -564,6 +568,41 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
             extra = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
             extra = apply_publication_delay(extra, "month_revenue")
             df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "chip_broker":
+            # 聚合為每日外資淨買超（_load_table 回傳明細，需聚合）
+            if "net" in extra.columns:
+                agg = extra.groupby("date").agg(
+                    foreign_total_buy=("total_buy", "sum"),
+                    foreign_total_sell=("total_sell", "sum"),
+                    foreign_net=("net", "sum"),
+                    foreign_broker_count=("securities_trader_id", "nunique"),
+                ).reset_index().sort_values("date")
+            else:
+                # 若已經是聚合後的資料，直接使用
+                agg = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            agg = apply_publication_delay(agg, "chip_broker")
+            df = pd.merge_asof(df, agg, on="date", direction="backward")
+
+        elif table == "day_trading":
+            keep_cols = ["date"]
+            col_map = {}
+            for c in extra.columns:
+                cl = c.lower()
+                if cl == "volume" and c != "volume":
+                    col_map[c] = "day_trade_volume"
+                elif "buyamount" in cl:
+                    col_map[c] = "day_trade_buy_amount"
+                elif "sellamount" in cl:
+                    col_map[c] = "day_trade_sell_amount"
+            extra = extra.rename(columns=col_map)
+            for renamed in col_map.values():
+                if renamed in extra.columns:
+                    keep_cols.append(renamed)
+            if len(keep_cols) > 1:
+                extra = extra[keep_cols].sort_values("date")
+                extra = apply_publication_delay(extra, "day_trading")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
     return df
 

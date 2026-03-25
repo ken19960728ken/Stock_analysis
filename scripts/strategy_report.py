@@ -60,6 +60,9 @@ STRATEGY_DATA_NEEDS = {
     "營收動能": ["month_revenue", "stock_per"],
     "量價動能": [],
     "波動率壓縮突破": [],
+    "當沖情緒反轉": ["day_trading"],
+    "外資連續買超": ["chip_broker"],
+    "散戶vs主力": ["day_trading", "chip_broker"],
 }
 
 
@@ -188,6 +191,40 @@ def load_dividend_history(engine, stock_id: str, start_date: str) -> pd.DataFram
     return df
 
 
+def load_chip_broker(engine, stock_id: str, start_date: str) -> pd.DataFrame:
+    """載入券商分點買賣明細（聚合為每日外資淨買超）"""
+    sql = text(
+        "SELECT date, "
+        "SUM(total_buy) as foreign_total_buy, "
+        "SUM(total_sell) as foreign_total_sell, "
+        "SUM(net) as foreign_net, "
+        "COUNT(DISTINCT securities_trader_id) as foreign_broker_count "
+        "FROM chip_broker "
+        "WHERE stock_id = :sid AND date >= :start "
+        "GROUP BY date ORDER BY date"
+    )
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": start_date})
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def load_day_trading(engine, stock_id: str, start_date: str) -> pd.DataFrame:
+    """載入當日沖銷交易統計"""
+    sql = text(
+        'SELECT date, "Volume" as day_trade_volume, '
+        '"BuyAmount" as day_trade_buy_amount, '
+        '"SellAmount" as day_trade_sell_amount '
+        "FROM day_trading "
+        "WHERE stock_id = :sid AND date >= :start "
+        "ORDER BY date"
+    )
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": start_date})
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
 # ---------------------------------------------------------------------------
 # 資料合併（對齊 3_策略回測.py 的 _enrich_data 邏輯）
 # ---------------------------------------------------------------------------
@@ -292,6 +329,18 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                     extra = extra[[c for c in div_cols if c in extra.columns]]
                     df = df.merge(extra, on="date", how="left")
                     df["dividend"] = df["dividend"].fillna(0)
+
+        elif table == "chip_broker":
+            extra = load_chip_broker(engine, stock_id, start_date)
+            if not extra.empty:
+                extra = apply_publication_delay(extra, "chip_broker")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "day_trading":
+            extra = load_day_trading(engine, stock_id, start_date)
+            if not extra.empty:
+                extra = apply_publication_delay(extra, "day_trading")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
 
     return df
 
