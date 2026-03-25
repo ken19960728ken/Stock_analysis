@@ -320,7 +320,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Key Patterns
 
-- **資料來源驗證（嚴格執行）**：策略建構或視覺化呈現中，**禁止憑空假設欄位或資料存在**。所有 DB 欄位引用必須先從 API 文件或 DB 實際查詢確認後才能使用。FinMind API 完整欄位定義見 `memory/finmind-api-schema.md`（來源: https://finmind.github.io/llms-full.txt ），開發時**優先參考此文件**。若欄位不在 API 中，必須明確標註為「自行計算」並在 `data_loader` 層實作。不確定時用 `safe_read_sql('SELECT * FROM table LIMIT 1')` 確認實際 DB schema。
+- **資料來源驗證（嚴格執行）**：策略建構或視覺化呈現中，**禁止憑空假設欄位或資料存在**。所有 DB 欄位引用必須先從 API 文件或 DB 實際查詢確認後才能使用。FinMind API 完整欄位定義見 `memory/finmind-api-schema.md`（來源: https://finmind.github.io/llms-full.txt + 2026-03-25 實際 API 呼叫驗證），開發時**優先參考此文件的「API 實際回傳值驗證」章節**。若欄位不在 API 中，必須明確標註為「自行計算」並在 `data_loader` 層實作。不確定時用 `safe_read_sql('SELECT * FROM table LIMIT 1')` 確認實際 DB schema。**新增 FinMind API 或修改 FOCUS_METRICS 時，必須先實際呼叫 API 驗證回傳的欄位/type 名稱，完整規範見 `docs/database-schema.md` 的 Data Source Verification Protocol。**
 - All DB writes use SQLAlchemy with `if_exists="append"` via pandas `to_sql`.
 - **資料公布延遲模型**：所有 `enrich_data()` 在合併非價格資料前，會根據 `DATA_PUBLICATION_DELAY`（`core/constants.py`）對資料日期做延遲偏移（`apply_publication_delay()`），避免回測中使用尚未公布的資料。月營收延遲 10 天、季報延遲 45 天、籌碼/估值延遲 1 天。
 - All scanners inherit from `BaseScanner`，提供 tqdm 進度條、Ctrl+C 安全中斷、斷點續傳、結算報告。
@@ -384,7 +384,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ### 開發規範
 
-- **禁止憑空捏造資料欄位**：新增任何 DB 欄位引用或策略所需資料前，必須先查閱 `memory/finmind-api-schema.md`（FinMind API 官方欄位定義）確認資料來源實際提供該欄位。若 API 不提供，須在 `data_loader` 層自行計算並明確標註。曾因假設 `month_revenue_year_on_year` 欄位存在，導致 20+ 處引用靜默失效。
+- **禁止憑空捏造資料欄位**：新增任何 DB 欄位引用或策略所需資料前，必須**實際呼叫 API** 確認回傳的欄位/type 名稱（不能只讀文件推測）。FinMind 的命名沒有統一慣例（如 `NetIncome` 實際叫 `IncomeAfterTaxes`、`CapitalExpenditure` 實際叫 `PropertyAndPlantAndEquipment`），**絕對不能假設名稱**。完整驗證流程見 `docs/database-schema.md` 的 Data Source Verification Protocol。歷史教訓：(1) `month_revenue_year_on_year` 假設存在但 API 不提供，20+ 處靜默失效 (2) FOCUS_METRICS 5 個 type 名稱錯誤，導致 NetIncome/EPS/Liabilities/Equity/CapEx 從未寫入 DB。
 - 執行重大操作（如切換功能）前，先 git commit 並 push 當前改動。
 - **修改 `analysis/` 相關程式碼後，必須完成以下兩步**：
   1. 更新對應文件（`analysis/documents/` 下的模型文件 + `README.md` 中的相關描述）

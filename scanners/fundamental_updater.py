@@ -239,6 +239,14 @@ class FundamentalUpdater:
         df_all["type"] = df_all["type"].astype(str).str.strip()
         df_filtered = df_all[df_all["type"].isin(FOCUS_METRICS)].copy()
 
+        # FOCUS_METRICS 匹配率檢查
+        missing_from_focus = set(FOCUS_METRICS) - set(df_all["type"].unique())
+        if missing_from_focus:
+            missing_str = ", ".join(sorted(missing_from_focus))
+            logger.warning(
+                f"[{stock_id}] FOCUS_METRICS 未在 API 回傳中匹配: {missing_str}"
+            )
+
         if df_filtered.empty:
             return True
 
