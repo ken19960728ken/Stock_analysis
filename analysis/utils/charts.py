@@ -381,7 +381,7 @@ def create_fundamental_chart(
 
     # EPS 季度趨勢 — financial_reports 是 pivot 格式 (type, value)
     if not financial_df.empty and "type" in financial_df.columns and "value" in financial_df.columns:
-        eps_data = financial_df[financial_df["type"] == "EarningsPerShare"].copy()
+        eps_data = financial_df[financial_df["type"].isin(["EPS", "EarningsPerShare"])].copy()
         if not eps_data.empty:
             eps_data["value"] = pd.to_numeric(eps_data["value"], errors="coerce")
             fig = go.Figure()

@@ -17,16 +17,19 @@ from core.scanner_base import BaseScanner
 logger = setup_logger("fundamental_scanner")
 
 FOCUS_METRICS = [
+    # 損益表 (taiwan_stock_financial_statement)
     "Revenue",
     "GrossProfit",
     "OperatingIncome",
-    "NetIncome",
-    "EarningsPerShare",
+    "IncomeAfterTaxes",  # 稅後淨利（舊名 NetIncome）
+    "EPS",               # 每股盈餘（舊名 EarningsPerShare）
+    # 資產負債表 (taiwan_stock_balance_sheet)
     "TotalAssets",
-    "TotalLiabilities",
-    "TotalEquity",
+    "Liabilities",       # 總負債（舊名 TotalLiabilities）
+    "Equity",            # 股東權益（舊名 TotalEquity）
+    # 現金流量表 (taiwan_stock_cash_flows_statement)
     "CashFlowsFromOperatingActivities",
-    "CapitalExpenditure",
+    "PropertyAndPlantAndEquipment",  # 資本支出（舊名 CapitalExpenditure）
 ]
 
 START_DATE = "2020-01-01"

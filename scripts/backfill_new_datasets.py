@@ -429,7 +429,7 @@ class DatasetBackfiller:
         # 找出 FOCUS_METRICS 中現金流量相關的 type
         cash_flow_types = {
             "CashFlowsFromOperatingActivities",
-            "CapitalExpenditure",
+            "PropertyAndPlantAndEquipment",
         }
         focus_set = set(FOCUS_METRICS) & cash_flow_types
         if not focus_set:

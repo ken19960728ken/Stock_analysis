@@ -237,7 +237,7 @@ class TestCreateFundamentalChart:
     def test_with_eps(self):
         fin_df = pd.DataFrame({
             "date": pd.date_range("2023-03-31", periods=4, freq="QE"),
-            "type": ["EarningsPerShare"] * 4,
+            "type": ["EPS"] * 4,
             "value": [8.5, 9.0, 9.5, 10.0],
         })
         figs = create_fundamental_chart(fin_df, pd.DataFrame(), pd.DataFrame(), pd.DataFrame())

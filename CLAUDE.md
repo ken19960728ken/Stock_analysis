@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 台灣股市量化交易系統，分為兩大部分：
 
 1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（22 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（23 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -126,7 +126,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
 | `analysis/pages/13_推薦追蹤.py` | 推薦命中率儀表板（整體勝率、策略拆分、排名 vs 績效、時間趨勢） |
-| `analysis/strategies/` | 22 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/strategies/` | 23 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
@@ -145,7 +145,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/granger_chain.py` | Granger 因果供應鏈自動發現（全配對檢定 + DAG + 網絡圖 + 快取） |
 | `analysis/utils/recommendation_db.py` | 推薦追蹤資料層（SQLite/Supabase 切換 + JSONB 轉換） |
 
-#### 策略清單（22 個）
+#### 策略清單（23 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -171,6 +171,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 營收動能 | `RevenueMomentumStrategy` | 基本面（營收 YoY 加速 + 營收新高） |
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
 | 次產業輪動 | `SubIndustryRotationStrategy` | 產業面（次產業營收動能+法人流向排名） |
+| 當沖情緒反轉 | `DayTradeSentimentStrategy` | 籌碼面（當沖比例 Z-Score 逆向交易） |
 
 ### 部署 `deploy/`
 
@@ -207,7 +208,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Script | Description |
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
-| `strategy_report.py` | 通用策略掃描回測報告（22 策略 + 0050 基準比較） |
+| `strategy_report.py` | 通用策略掃描回測報告（23 策略 + 0050 基準比較） |
 | `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 | `db_integrity_check.py` | DB 完整性掃描（交易日清單、每日記錄數、重複偵測、跨表一致性） |
@@ -306,6 +307,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_data_publication_delay.py` | 資料公布延遲常數 + 偏移函式測試（10 項） |
 | `test_alert_manager.py` | 告警管理測試（執行日誌記錄 + 告警升級，13 項） |
 | `test_health_check.py` | 資料健檢測試（DB 連線 + 筆數 + 異常值 + 告警內文，9 項） |
+| `test_day_trade_sentiment.py` | 當沖情緒反轉策略測試（訊號生成、Z-Score、參數邊界，13 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
@@ -374,7 +376,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
    - `analysis/documents/3_策略回測/strategies/README.md` — 更新策略索引表
    - `analysis/documents/測試說明.md` — 更新測試模組表格 + 合計數
    - `analysis/strategies/__init__.py` — 註冊新策略到 `STRATEGY_MAP`
-   - `CLAUDE.md` — 更新策略清單表格（22→N）、Tests 表格
+   - `CLAUDE.md` — 更新策略清單表格（23→N）、Tests 表格
    - `README.md` — 更新策略數量
    - `analysis/README.md` — 更新內建策略清單
    - `CHANGELOG.md` — 記錄變更
@@ -391,7 +393,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - **改動程式碼後必須主動同步所有相關 .md 文件，不等使用者提醒，且不可遺漏**。完整的「程式碼變更 → 文件同步」對應規則記錄在 auto memory 的 `doc-sync-rules.md`，每次改動前先查閱。數字常量（策略數、測試數、頁面數）改動後必須 grep 確認所有出處。
 - **資料夾/檔案結構變更**（搬移、重新命名、拆分、合併）後，必須用 `grep -rn "舊路徑" --include="*.md" --include="*.py"` 全專案搜尋殘留引用，逐一更新。同時更新 CLAUDE.md 架構描述、README、analysis/README 文件索引、`.gitignore`、doc-sync-rules.md 中的路徑。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
-- 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 22`），新增策略時需全域搜尋並更新所有相關斷言。
+- 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 23`），新增策略時需全域搜尋並更新所有相關斷言。
 
 ### 版本管控規範
 
