@@ -5,6 +5,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm 
 
 WORKDIR /app
 
+# 建置時注入版本資訊（由 deploy-pipeline.sh 傳入）
+ARG APP_VERSION=unknown
+ARG GIT_COMMIT=unknown
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 # Install uv + dependencies (pipeline extras only)
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev --extra pipeline

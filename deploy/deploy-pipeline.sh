@@ -36,9 +36,13 @@ VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','
 GIT_SHA=$(git rev-parse --short HEAD)
 IMAGE_TAG="${VERSION}-${GIT_SHA}"
 
+FULL_GIT_SHA=$(git rev-parse HEAD)
+
 echo "=== 建置 Pipeline Docker 映像 (linux/amd64) ==="
 echo "版本: ${VERSION} | Git SHA: ${GIT_SHA} | 標籤: ${IMAGE_TAG}"
 docker buildx build --platform linux/amd64 -f Dockerfile.pipeline \
+    --build-arg APP_VERSION="${VERSION}" \
+    --build-arg GIT_COMMIT="${FULL_GIT_SHA}" \
     -t "${IMAGE_BASE}:${IMAGE_TAG}" \
     -t "${IMAGE_BASE}:latest" \
     --push .

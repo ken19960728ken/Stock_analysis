@@ -146,22 +146,29 @@ def _build_stock_cache(df: pd.DataFrame | None) -> dict[str, pd.DataFrame]:
 # ===================================================================
 
 def collect_version_fingerprint() -> dict:
-    """收集 git commit SHA + app 版本號"""
-    # git commit
-    try:
-        git_sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(PROJECT_ROOT),
-            stderr=subprocess.DEVNULL,
-        ).decode().strip()
-    except Exception:
-        git_sha = "unknown"
+    """收集 git commit SHA + app 版本號。
 
-    # app version
-    try:
-        app_ver = importlib.metadata.version("stock-analysis")
-    except Exception:
-        app_ver = "unknown"
+    優先讀取環境變數（Docker 建置時注入），fallback 到 git / importlib。
+    """
+    # git commit: 環境變數 > git 指令
+    git_sha = os.environ.get("GIT_COMMIT", "").strip()
+    if not git_sha or git_sha == "unknown":
+        try:
+            git_sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(PROJECT_ROOT),
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+        except Exception:
+            git_sha = "unknown"
+
+    # app version: 環境變數 > importlib
+    app_ver = os.environ.get("APP_VERSION", "").strip()
+    if not app_ver or app_ver == "unknown":
+        try:
+            app_ver = importlib.metadata.version("stock-analysis")
+        except Exception:
+            app_ver = "unknown"
 
     return {"git_commit": git_sha, "app_version": app_ver}
 
