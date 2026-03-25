@@ -21,12 +21,38 @@ class Backtester:
         commission: float = 0.001425,  # 台灣手續費 0.1425%
         tax: float = 0.003,            # 賣出證交稅 0.3%
         slippage: float = 0.001,       # 滑價 0.1%
+        dynamic_slippage: bool = False,  # 啟用動態滑價
+        impact_coeff: float = 0.1,      # 市場衝擊係數（Kyle lambda 簡化）
+        max_participation: float = 1.0,  # 最大參與率（1.0 = 不限制）
+        min_avg_volume: int = 0,         # 最低日均量（股），0 = 不限制
     ):
         self.strategy = strategy
         self.initial_capital = capital
         self.commission = commission
         self.tax = tax
         self.slippage = slippage
+        self.dynamic_slippage = dynamic_slippage
+        self.impact_coeff = impact_coeff
+        self.max_participation = max_participation
+        self.min_avg_volume = min_avg_volume
+
+    def _calc_dynamic_slippage(self, shares: int, avg_volume: float) -> float:
+        """動態滑價 = 基礎滑價 + 衝擊滑價
+
+        學理來源:
+        - Almgren & Chriss (2001) "Optimal Execution of Portfolio Transactions"
+        - Kyle (1985) "Continuous Auctions and Insider Trading"
+
+        base_slippage: 0.05% (bid-ask spread 的一半)
+        impact: participation_rate × impact_coeff
+        """
+        base_slippage = 0.0005
+        if avg_volume > 0:
+            participation = shares / avg_volume
+            impact = participation * self.impact_coeff
+        else:
+            impact = 0.01  # 無量資料，保守 1%
+        return base_slippage + impact
 
     def run(self, data: pd.DataFrame) -> BacktestResult:
         """
@@ -47,6 +73,12 @@ class Backtester:
         # 將 signal 向後 shift 1 日，使買賣在訊號產生的隔日以收盤價成交。
         df["signal"] = df["signal"].shift(1).fillna(0).astype(int)
 
+        # 預計算 20 日均量（動態滑價 + 流動性限制用）
+        if "volume" in df.columns:
+            df["_avg_vol_20"] = df["volume"].rolling(20, min_periods=5).mean()
+        else:
+            df["_avg_vol_20"] = 0
+
         # 回測主邏輯
         capital = self.initial_capital
         position = 0
@@ -61,12 +93,30 @@ class Backtester:
             price = row["close"]
             date = row["date"]
             signal = row.get("signal", 0)
+            raw_avg_vol = row.get("_avg_vol_20", 0)
+            avg_vol = float(raw_avg_vol) if pd.notna(raw_avg_vol) else 0.0
 
             if signal == 1 and position == 0:
+                # 計算滑價
+                if self.dynamic_slippage and avg_vol > 0:
+                    # 先用初步估算的 shares 計算滑價
+                    est_shares = int(capital / (price * (1 + self.commission)) / 1000) * 1000
+                    slip = self._calc_dynamic_slippage(est_shares, avg_vol)
+                else:
+                    slip = self.slippage
+
                 # 買入（訊號來自前一日收盤，本日執行）
-                buy_price = price * (1 + self.slippage)
+                buy_price = price * (1 + slip)
                 buy_cost = buy_price * (1 + self.commission)
                 shares = int(capital / buy_cost / 1000) * 1000  # 整張（1000股）
+
+                # 流動性限制
+                if self.max_participation < 1.0 and avg_vol > 0:
+                    max_shares = int(avg_vol * self.max_participation / 1000) * 1000
+                    shares = min(shares, max_shares)
+                if self.min_avg_volume > 0 and avg_vol < self.min_avg_volume:
+                    shares = 0  # 流動性不足，放棄交易
+
                 if shares > 0:
                     total_cost = shares * buy_price * (1 + self.commission)
                     capital -= total_cost
@@ -75,8 +125,14 @@ class Backtester:
                     entry_date = date
 
             elif signal == -1 and position == 1:
+                # 計算賣出滑價
+                if self.dynamic_slippage and avg_vol > 0:
+                    slip = self._calc_dynamic_slippage(shares, avg_vol)
+                else:
+                    slip = self.slippage
+
                 # 賣出（訊號來自前一日收盤，本日執行）
-                sell_price = price * (1 - self.slippage)
+                sell_price = price * (1 - slip)
                 proceeds = shares * sell_price * (1 - self.commission - self.tax)
                 pnl = proceeds - shares * entry_price * (1 + self.commission)
                 pnl_pct = pnl / (shares * entry_price * (1 + self.commission))
@@ -118,6 +174,63 @@ class Backtester:
         # 計算績效指標
         result = self._calc_metrics(equity_series, trades_df)
         return result
+
+    def _calc_annual_breakdown(self, equity: pd.Series, trades: pd.DataFrame) -> pd.DataFrame:
+        """按年度拆解績效"""
+        if equity.empty:
+            return pd.DataFrame()
+
+        years = sorted(set(d.year for d in equity.index))
+        rows = []
+        for year in years:
+            year_mask = [d.year == year for d in equity.index]
+            year_eq = equity[year_mask]
+            if len(year_eq) < 2:
+                continue
+            year_ret = year_eq.iloc[-1] / year_eq.iloc[0] - 1
+            year_returns = year_eq.pct_change().dropna()
+
+            # Sharpe
+            if len(year_returns) > 1 and year_returns.std() > _EPS:
+                year_sharpe = (
+                    (year_returns.mean() - RISK_FREE_RATE / TRADING_DAYS_PER_YEAR)
+                    / year_returns.std()
+                    * np.sqrt(TRADING_DAYS_PER_YEAR)
+                )
+            else:
+                year_sharpe = 0.0
+
+            # Max Drawdown
+            peak = year_eq.cummax()
+            dd = (year_eq - peak) / peak
+            year_mdd = dd.min()
+
+            # 交易統計（該年度）
+            if not trades.empty and "entry_date" in trades.columns:
+                year_trades = trades[
+                    trades["entry_date"].apply(
+                        lambda d: d.year == year if hasattr(d, "year") else False
+                    )
+                ]
+                year_trade_count = len(year_trades)
+                if year_trade_count > 0:
+                    year_win_rate = len(year_trades[year_trades["pnl"] > 0]) / year_trade_count
+                else:
+                    year_win_rate = 0.0
+            else:
+                year_trade_count = 0
+                year_win_rate = 0.0
+
+            rows.append({
+                "year": year,
+                "return": round(year_ret, 4),
+                "sharpe": round(year_sharpe, 2),
+                "max_drawdown": round(year_mdd, 4),
+                "trade_count": year_trade_count,
+                "win_rate": round(year_win_rate, 4),
+            })
+
+        return pd.DataFrame(rows)
 
     def _calc_metrics(self, equity: pd.Series, trades: pd.DataFrame) -> BacktestResult:
         """計算績效指標"""
@@ -187,6 +300,9 @@ class Backtester:
         else:
             monthly = pd.Series(dtype=float)
 
+        # 分年績效
+        annual_breakdown = self._calc_annual_breakdown(equity, trades)
+
         return BacktestResult(
             total_return=round(total_return, 4),
             annual_return=round(annual_return, 4),
@@ -202,4 +318,5 @@ class Backtester:
             drawdown_curve=drawdown,
             trades=trades,
             monthly_returns=monthly,
+            annual_breakdown=annual_breakdown,
         )
