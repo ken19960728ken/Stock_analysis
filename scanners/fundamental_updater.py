@@ -195,7 +195,7 @@ class FundamentalUpdater:
         self._log_run(target_date, run_start, len(missing), success_count, fail_count)
 
     def _fetch_one(self, stock_id: str) -> bool:
-        """抓取單支股票的損益表 + 資產負債表，寫入 DB。"""
+        """抓取單支股票的損益表 + 資產負債表 + 現金流量表，寫入 DB。"""
         try:
             def _call_income():
                 return self.fm_loader.taiwan_stock_financial_statement(
@@ -207,9 +207,16 @@ class FundamentalUpdater:
                     stock_id=stock_id, start_date=FETCH_START_DATE,
                 )
 
+            def _call_cashflow():
+                return self.fm_loader.taiwan_stock_cash_flows_statement(
+                    stock_id=stock_id, start_date=FETCH_START_DATE,
+                )
+
             df_income = self.limiter.call_with_retry(_call_income)
             self.limiter.wait()
             df_balance = self.limiter.call_with_retry(_call_balance)
+            self.limiter.wait()
+            df_cashflow = self.limiter.call_with_retry(_call_cashflow)
             self.limiter.wait()
         except Exception as e:
             logger.error(f"[{stock_id}] API 異常: {e}")
@@ -221,6 +228,8 @@ class FundamentalUpdater:
             df_list.append(df_income)
         if df_balance is not None and not df_balance.empty:
             df_list.append(df_balance)
+        if df_cashflow is not None and not df_cashflow.empty:
+            df_list.append(df_cashflow)
 
         if not df_list:
             # API 成功但無資料（如 ETF），視為成功

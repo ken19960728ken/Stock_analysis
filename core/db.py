@@ -167,15 +167,45 @@ def _auto_serialize_json_columns(df):
     return df
 
 
+# 不需要過濾權證的表（靜態資料、無 stock_id、或本身就是全市場資料）
+_NO_WARRANT_FILTER_TABLES = frozenset({
+    "twstock_code", "industry_mapping", "industry_classification",
+    "recommendation_history", "scanner_run_log",
+    "total_return_index", "stock_delisting", "securities_trader_info",
+})
+
+
+def _filter_warrants(df, table_name):
+    """過濾權證資料（stock_id >= 6 碼）。
+
+    權證代碼為 6 碼（如 030000），一般股票/ETF 為 4-5 碼。
+    除非特定表不需要過濾，否則自動排除權證以節省 DB 空間和 IO。
+    """
+    if table_name in _NO_WARRANT_FILTER_TABLES:
+        return df
+    if "stock_id" not in df.columns:
+        return df
+    before = len(df)
+    df = df[df["stock_id"].astype(str).str.len() < 6]
+    filtered = before - len(df)
+    if filtered > 0:
+        logger.debug(f"[{table_name}] 過濾 {filtered} 筆權證資料")
+    return df
+
+
 def save_to_db(df, table_name, chunksize=500):
     """封裝 to_sql，統一寫入邏輯（自動忽略重複資料）
 
+    - 自動過濾權證資料（stock_id >= 6 碼），避免寫入不必要的資料。
     - 自動將 dict/list 欄位序列化為 JSON 字串（防止 psycopg2 JSONB 寫入錯誤）
     - 遇到連線斷線時，重置連線池並重試一次。
     """
     if df is None or df.empty:
         return False
     _validate_table_name(table_name)
+    df = _filter_warrants(df, table_name)
+    if df.empty:
+        return False
     df = _auto_serialize_json_columns(df)
     return _save_chunk(df, table_name, chunksize)
 

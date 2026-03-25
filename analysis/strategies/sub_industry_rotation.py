@@ -37,29 +37,39 @@ class SubIndustryRotationStrategy(Strategy):
         if stock_sub is None:
             return df
 
-        # 需要產業排名資料（由 enrich_data 提供 _industry_rank 欄位）
-        if "_industry_rank" in df.columns:
-            rank_filled = df["_industry_rank"].ffill()
-            buy = rank_filled <= top_n
-            sell = rank_filled > top_n
-        else:
-            # Fallback: 若有營收動能相關欄位，用簡化邏輯
-            if "revenue" not in df.columns:
-                return df
+        # 需要營收資料判斷產業動能
+        if "revenue" not in df.columns:
+            return df
 
-            # 簡化版：用營收 YoY 判斷產業動能
-            if "revenue_yoy" in df.columns or "month_revenue_year_on_year" in df.columns:
-                yoy_col = "revenue_yoy" if "revenue_yoy" in df.columns else "month_revenue_year_on_year"
-                yoy = pd.to_numeric(df[yoy_col], errors="coerce").ffill()
-                # 營收 YoY > 10% 且有法人買超 → 買入
-                buy = yoy > 10
-                if "institutional_net_buy" in df.columns:
-                    inst = pd.to_numeric(df["institutional_net_buy"], errors="coerce").fillna(0)
-                    inst_positive = inst.rolling(5, min_periods=1).sum() > 0
-                    buy = buy & inst_positive
-                sell = yoy < 0
-            else:
-                return df
+        # 用營收 YoY 趨勢 + 法人流向判斷次產業動能
+        # 找出營收 YoY 欄位（動態搜尋）
+        yoy_col = None
+        for c in df.columns:
+            if c.lower() in ("revenue_yoy", "month_revenue_year_on_year"):
+                yoy_col = c
+                break
+        if yoy_col is None:
+            return df
+
+        yoy = pd.to_numeric(df[yoy_col], errors="coerce").ffill()
+
+        # 營收 YoY 加速趨勢（近期 > 前期）
+        yoy_accel = yoy > yoy.shift(21)  # 月度比較
+        yoy_strong = yoy > 10  # 營收 YoY > 10%
+
+        # 法人流向（若有資料）
+        has_inst = "institutional_net_buy" in df.columns
+        if has_inst:
+            inst = pd.to_numeric(df["institutional_net_buy"], errors="coerce").fillna(0)
+            inst_positive = inst.rolling(5, min_periods=1).sum() > 0
+            # 買入條件：營收 YoY 強勢 + (加速趨勢 或 法人買超)
+            buy = yoy_strong & (yoy_accel | inst_positive)
+            # 賣出條件：營收 YoY 轉負 且 法人未買超
+            sell = (yoy < 0) & (~inst_positive)
+        else:
+            # 無法人資料：營收 YoY 強勢 + 加速趨勢
+            buy = yoy_strong & yoy_accel
+            sell = yoy < 0
 
         # 建立訊號
         signal = pd.Series(0, index=df.index)

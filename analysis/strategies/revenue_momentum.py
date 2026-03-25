@@ -86,9 +86,14 @@ class RevenueMomentumStrategy(Strategy):
             yoy_increasing
         )
 
-        # PE 過濾（估值不能過高）
-        if enable_pe and "PER" in df.columns:
-            per = df["PER"].astype(float).ffill()
+        # PE 過濾（估值不能過高）— 動態搜尋欄位名稱
+        per_col = None
+        for c in df.columns:
+            if c.lower() in ("per", "pe_ratio", "pe", "本益比"):
+                per_col = c
+                break
+        if enable_pe and per_col:
+            per = df[per_col].astype(float).ffill()
             pe_ok = (per > 0) & (per < pe_upper)
             buy = buy & pe_ok
 

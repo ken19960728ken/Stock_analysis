@@ -26,6 +26,7 @@ FOCUS_METRICS = [
     "TotalLiabilities",
     "TotalEquity",
     "CashFlowsFromOperatingActivities",
+    "CapitalExpenditure",
 ]
 
 START_DATE = "2020-01-01"
@@ -83,7 +84,7 @@ class FundamentalScanner(BaseScanner):
         return any_success
 
     def _fetch_financial_statements(self, stock_id):
-        """抓取損益表 + 資產負債表，篩選關鍵指標"""
+        """抓取損益表 + 資產負債表 + 現金流量表，篩選關鍵指標"""
         def _call_income():
             return self.fm_loader.taiwan_stock_financial_statement(
                 stock_id=stock_id, start_date=START_DATE,
@@ -94,15 +95,24 @@ class FundamentalScanner(BaseScanner):
                 stock_id=stock_id, start_date=START_DATE,
             )
 
+        def _call_cashflow():
+            return self.fm_loader.taiwan_stock_cash_flows_statement(
+                stock_id=stock_id, start_date=START_DATE,
+            )
+
         df_income = self.limiter.call_with_retry(_call_income)
         self.limiter.wait()
         df_balance = self.limiter.call_with_retry(_call_balance)
+        self.limiter.wait()
+        df_cashflow = self.limiter.call_with_retry(_call_cashflow)
 
         df_list = []
         if df_income is not None and not df_income.empty:
             df_list.append(df_income)
         if df_balance is not None and not df_balance.empty:
             df_list.append(df_balance)
+        if df_cashflow is not None and not df_cashflow.empty:
+            df_list.append(df_cashflow)
 
         if not df_list:
             return None

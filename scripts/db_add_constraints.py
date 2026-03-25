@@ -46,6 +46,13 @@ CONSTRAINTS = [
     ("industry_classification", "uq_industry_classification", "stock_id"),
     ("recommendation_history", "uq_recommendation_history", "report_date, stock_id"),
     ("scanner_run_log", "uq_scanner_run_log", "run_date, scanner_name, started_at"),
+    ("day_trading", "uq_day_trading", "stock_id, date"),
+    ("dividend_result", "uq_dividend_result", "stock_id, date"),
+    ("total_return_index", "uq_total_return_index", "stock_id, date"),
+    ("stock_delisting", "uq_stock_delisting", "stock_id, date"),
+    ("securities_trader_info", "uq_securities_trader_info", "securities_trader_id"),
+    ("chip_broker", "uq_chip_broker", "stock_id, date, securities_trader_id"),
+    ("chip_gov_bank", "uq_chip_gov_bank", "stock_id, date, bank_name"),
 ]
 
 

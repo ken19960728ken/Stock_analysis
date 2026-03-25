@@ -45,8 +45,8 @@ class TestSubIndustryRotationStrategy:
         df["sub_industry"] = "IC 設計"
         df["revenue"] = 1000000
         df["revenue_yoy"] = np.nan
-        # 前半段 YoY 高（買入），後半段 YoY 低（賣出）
-        df.loc[:59, "revenue_yoy"] = 20.0
+        # 前半段 YoY 從低到高（加速趨勢），後半段 YoY 轉負（賣出）
+        df.loc[:59, "revenue_yoy"] = np.linspace(5, 25, 60)
         df.loc[60:, "revenue_yoy"] = -5.0
 
         strategy = SubIndustryRotationStrategy()
@@ -56,14 +56,15 @@ class TestSubIndustryRotationStrategy:
         assert (result["signal"] == 1).any()
         assert (result["signal"] == -1).any()
 
-    def test_with_industry_rank(self, daily_data):
-        """有 _industry_rank 欄位時使用排名邏輯"""
+    def test_with_yoy_acceleration(self, daily_data):
+        """營收 YoY 加速時產生買入訊號"""
         df = daily_data.copy()
         df["sub_industry"] = "IC 設計"
-        df["_industry_rank"] = np.nan
-        # 前半段排名好（top 3），後半段排名差
-        df.loc[:59, "_industry_rank"] = 2
-        df.loc[60:, "_industry_rank"] = 10
+        df["revenue"] = 1000000
+        df["revenue_yoy"] = np.nan
+        # 前半段 YoY 由低到高（加速），後半段 YoY 轉負
+        df.loc[:59, "revenue_yoy"] = np.linspace(5, 25, 60)
+        df.loc[60:, "revenue_yoy"] = -5.0
 
         strategy = SubIndustryRotationStrategy()
         result = strategy.generate_signals(df)
@@ -74,14 +75,15 @@ class TestSubIndustryRotationStrategy:
         """最大持有天數強制出場"""
         df = daily_data.copy()
         df["sub_industry"] = "IC 設計"
-        df["_industry_rank"] = 1  # 一直在 top
+        df["revenue"] = 1000000
+        # 營收 YoY 一直高（持續買入條件），測試強制出場
+        df["revenue_yoy"] = np.linspace(5, 30, len(df))
 
         strategy = SubIndustryRotationStrategy()
         strategy.set_params(max_hold_days=30)
         result = strategy.generate_signals(df)
 
         # 應有強制賣出
-        signals = result[result["signal"] != 0]
         if (result["signal"] == 1).any():
             # 從第一個買入到賣出，不應超過 30 天
             buys = result[result["signal"] == 1].index

@@ -27,6 +27,17 @@ from scanners.chip_scanner import CHIP_DATASETS, _pivot_institutional
 
 logger = setup_logger("daily_updater")
 
+# 新增每日資料集：(DataLoader 方法名, DB 表名, 標籤說明)
+DAILY_NEW_DATASETS = [
+    ("taiwan_stock_day_trading", "day_trading", "當日沖銷"),
+]
+
+# Sponsor 限定資料集（需 Sponsor 帳號才能取得）
+SPONSOR_DATASETS = [
+    ("taiwan_stock_trading_daily_report", "chip_broker", "券商分點"),
+    ("taiwan_stock_government_bank_buy_sell", "chip_gov_bank", "官股行庫"),
+]
+
 
 # ============================================================================
 # 交易日判斷（TWSE 開休市行事曆）
@@ -144,32 +155,64 @@ class DailyUpdater:
         # 各公司公布時間不同（法定期限次月 10 號），每天抓確保不遺漏晚公布的公司
         revenue_ok = self._fetch_revenue(target_date)
 
-        # Step 5: 結算報告
+        # Step 5: 新增每日資料集（當沖等）
+        new_daily_results = self._fetch_new_daily(date_str)
+
+        # Step 6: Sponsor 資料集（券商分點、官股行庫）
+        sponsor_results = self._fetch_sponsor(date_str)
+
+        # Step 7: 含息報酬指數（市場級，每日更新）
+        tri_ok = self._fetch_total_return_index(date_str)
+
+        # Step 8: 結算報告
         valuation_ok = sum(valuation_results.values())
+        new_daily_ok = sum(new_daily_results.values())
+        sponsor_ok = sum(sponsor_results.values())
         success_count = (
             (1 if price_ok else 0)
             + sum(chip_results.values())
             + valuation_ok
             + (1 if revenue_ok else 0)
+            + new_daily_ok
+            + sponsor_ok
+            + (1 if tri_ok else 0)
         )
-        total_count = 1 + len(CHIP_DATASETS) + len(valuation_results) + 1
+        total_count = (
+            1 + len(CHIP_DATASETS) + len(valuation_results) + 1
+            + len(DAILY_NEW_DATASETS) + len(SPONSOR_DATASETS) + 1
+        )
 
-        logger.info(f"{'='*60}")
+        sep = "=" * 60
+        logger.info(sep)
         logger.info(
             f"每日更新完成: {date_str} | "
             f"成功 {success_count}/{total_count} 個 dataset | "
             f"總耗時 {_elapsed(run_start)}"
         )
         # 逐項列出結果
-        logger.info(f"  [價格]           {'✓' if price_ok else '✗'} ({price_result})")
+        price_mark = "v" if price_ok else "x"
+        logger.info(f"  [價格]           {price_mark} ({price_result})")
         for _, table_name, label in CHIP_DATASETS:
             ok = chip_results.get(table_name, False)
-            logger.info(f"  [{label:10s}]  {'✓' if ok else '✗'}")
+            mark = "v" if ok else "x"
+            logger.info(f"  [{label:10s}]  {mark}")
         for _, table_name, label in self.VALUATION_DATASETS:
             ok = valuation_results.get(table_name, False)
-            logger.info(f"  [{label:10s}]  {'✓' if ok else '✗'}")
-        logger.info(f"  [{'月營收':10s}]  {'✓' if revenue_ok else '✗'}")
-        logger.info(f"{'='*60}")
+            mark = "v" if ok else "x"
+            logger.info(f"  [{label:10s}]  {mark}")
+        revenue_mark = "v" if revenue_ok else "x"
+        logger.info(f"  [月營收        ]  {revenue_mark}")
+        for _, table_name, label in DAILY_NEW_DATASETS:
+            ok = new_daily_results.get(table_name, False)
+            mark = "v" if ok else "x"
+            logger.info(f"  [{label:10s}]  {mark}")
+        for _, table_name, label in SPONSOR_DATASETS:
+            ok = sponsor_results.get(table_name, False)
+            mark = "v" if ok else "x"
+            logger.info(f"  [{label:10s}]  {mark}")
+        tri_mark = "v" if tri_ok else "x"
+        logger.info(f"  [含息報酬指數  ]  {tri_mark}")
+        logger.info(sep)
 
         return True
 
@@ -414,6 +457,255 @@ class DailyUpdater:
         ok = save_to_db(df, "month_revenue")
         logger.info(
             f"[月營收] DB 寫入 {'成功' if ok else '失敗'}: {len(df) if ok else 0} 筆 "
+            f"(耗時 {_elapsed(t1)})"
+        )
+        self.limiter.wait()
+        return ok
+
+    # ------------------------------------------------------------------
+    # 新增每日資料集（當沖等）
+    # ------------------------------------------------------------------
+
+    def _fetch_new_daily(self, date_str):
+        """批量取得新增每日資料集。回傳 dict: {table_name: bool}。"""
+        results = {}
+
+        for method_name, table_name, label in DAILY_NEW_DATASETS:
+            t0 = time.time()
+            logger.info(f"[{label}] 批量查詢 {date_str} ...")
+
+            try:
+                fetch_fn = getattr(self.fm_loader, method_name)
+
+                def _call(fn=fetch_fn):
+                    return fn(start_date=date_str, end_date=date_str)
+
+                df = self.limiter.call_with_retry(_call)
+            except Exception as e:
+                etype = type(e).__name__
+                logger.error(
+                    f"[{label}] API 異常: {etype}: {e} "
+                    f"(耗時 {_elapsed(t0)})"
+                )
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            if df is None or df.empty:
+                status = "None" if df is None else "空 DataFrame"
+                logger.info(f"[{label}] API 回傳 {status} (耗時 {_elapsed(t0)})")
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            logger.info(
+                f"[{label}] API 回傳 {len(df)} 筆, "
+                f"欄位: {list(df.columns)} "
+                f"(耗時 {_elapsed(t0)})"
+            )
+
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"]).dt.date
+
+            t1 = time.time()
+            ok = save_to_db(df, table_name)
+            row_count = len(df) if ok else 0
+            logger.info(
+                f"[{label}] DB 寫入 {'成功' if ok else '失敗'}: {row_count} 筆 "
+                f"(耗時 {_elapsed(t1)})"
+            )
+            results[table_name] = ok
+            self.limiter.wait()
+
+        return results
+
+    # ------------------------------------------------------------------
+    # Sponsor 資料集（券商分點、官股行庫）
+    # ------------------------------------------------------------------
+
+    # 8 大外資券商代碼
+    FOREIGN_BROKERS = {
+        "1650": "瑞銀", "1480": "高盛", "1470": "摩根士丹利",
+        "8440": "摩根大通", "1440": "美林", "1590": "花旗環球",
+        "1360": "麥格理", "1560": "野村",
+    }
+
+    def _fetch_sponsor(self, date_str):
+        """取得 Sponsor 限定資料集。
+        broker: 用 securities_trader_id 查 8 大外資，聚合後寫入。
+        gov_bank: 用 start_date 全市場查詢。
+        權限不足時靜默跳過，log warning。
+        回傳 dict: {table_name: bool}。
+        """
+        results = {}
+
+        # --- 券商分點（8 大外資聚合）---
+        t0 = time.time()
+        logger.info(f"[券商分點] 查詢 {date_str}（8 大外資）...")
+        broker_ok = self._fetch_broker_aggregated(date_str)
+        results["chip_broker"] = broker_ok
+
+        # --- 官股行庫 ---
+        for method_name, table_name, label in SPONSOR_DATASETS:
+            if table_name == "chip_broker":
+                continue  # 已在上面處理
+            t0 = time.time()
+            logger.info(f"[{label}] 查詢 {date_str} ...")
+
+            try:
+                fetch_fn = getattr(self.fm_loader, method_name)
+
+                def _call(fn=fetch_fn, d=date_str):
+                    return fn(start_date=d)
+
+                df = self.limiter.call_with_retry(_call)
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "403" in err_msg or "permission" in err_msg or "sponsor" in err_msg:
+                    logger.warning(
+                        f"[{label}] 需要 Sponsor 帳號，跳過 (耗時 {_elapsed(t0)})"
+                    )
+                    results[table_name] = False
+                    self.limiter.wait()
+                    continue
+                etype = type(e).__name__
+                logger.error(
+                    f"[{label}] API 異常: {etype}: {e} "
+                    f"(耗時 {_elapsed(t0)})"
+                )
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            if df is None or df.empty:
+                status = "None" if df is None else "空 DataFrame"
+                logger.info(f"[{label}] API 回傳 {status} (耗時 {_elapsed(t0)})")
+                results[table_name] = False
+                self.limiter.wait()
+                continue
+
+            logger.info(
+                f"[{label}] API 回傳 {len(df)} 筆, "
+                f"欄位: {list(df.columns)} "
+                f"(耗時 {_elapsed(t0)})"
+            )
+
+            if "date" in df.columns:
+                df["date"] = pd.to_datetime(df["date"]).dt.date
+
+            t1 = time.time()
+            ok = save_to_db(df, table_name)
+            row_count = len(df) if ok else 0
+            logger.info(
+                f"[{label}] DB 寫入 {'成功' if ok else '失敗'}: {row_count} 筆 "
+                f"(耗時 {_elapsed(t1)})"
+            )
+            results[table_name] = ok
+            self.limiter.wait()
+
+        return results
+
+    # ------------------------------------------------------------------
+    # 券商分點（8 大外資聚合）
+    # ------------------------------------------------------------------
+
+    def _fetch_broker_aggregated(self, date_str):
+        """用 securities_trader_id 查 8 大外資，聚合後寫入 chip_broker。
+
+        每天 8 次 API call，聚合後每券商每股一筆。
+        回傳 bool。
+        """
+        t0 = time.time()
+        buffer = []
+
+        for broker_id, broker_name in self.FOREIGN_BROKERS.items():
+            try:
+                def _call(bid=broker_id, d=date_str):
+                    return self.fm_loader.taiwan_stock_trading_daily_report(
+                        securities_trader_id=bid, date=d,
+                    )
+                df = self.limiter.call_with_retry(_call)
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "403" in err_msg or "permission" in err_msg:
+                    logger.warning(
+                        f"[券商分點] 需要 Sponsor 帳號，跳過 (耗時 {_elapsed(t0)})"
+                    )
+                    return False
+                logger.error(f"[券商分點] {broker_name} 查詢失敗: {e}")
+                self.limiter.wait()
+                continue
+
+            if df is not None and not df.empty:
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"]).dt.date
+                buffer.append(df)
+            self.limiter.wait()
+
+        if not buffer:
+            logger.info(f"[券商分點] 無資料 (耗時 {_elapsed(t0)})")
+            return False
+
+        merged = pd.concat(buffer, ignore_index=True)
+        # 聚合：每券商每股每天一筆
+        agg = merged.groupby(
+            ["stock_id", "date", "securities_trader_id", "securities_trader"],
+            as_index=False,
+        ).agg(total_buy=("buy", "sum"), total_sell=("sell", "sum"))
+        agg["net"] = agg["total_buy"] - agg["total_sell"]
+
+        t1 = time.time()
+        ok = save_to_db(agg, "chip_broker", chunksize=5000)
+        logger.info(
+            f"[券商分點] {len(agg)} 筆聚合資料寫入"
+            f"{'成功' if ok else '失敗'} (耗時 {_elapsed(t0)})"
+        )
+        return ok
+
+    # ------------------------------------------------------------------
+    # 含息報酬指數
+    # ------------------------------------------------------------------
+
+    def _fetch_total_return_index(self, date_str):
+        """取得含息報酬指數（TAIEX）。回傳 bool。"""
+        t0 = time.time()
+        logger.info(f"[含息報酬指數] 查詢 {date_str} ...")
+
+        try:
+            def _call():
+                return self.fm_loader.taiwan_stock_total_return_index(
+                    index_id="TAIEX", start_date=date_str, end_date=date_str
+                )
+
+            df = self.limiter.call_with_retry(_call)
+        except Exception as e:
+            etype = type(e).__name__
+            logger.error(
+                f"[含息報酬指數] API 異常: {etype}: {e} (耗時 {_elapsed(t0)})"
+            )
+            self.limiter.wait()
+            return False
+
+        if df is None or df.empty:
+            status = "None" if df is None else "空 DataFrame"
+            logger.info(f"[含息報酬指數] API 回傳 {status} (耗時 {_elapsed(t0)})")
+            self.limiter.wait()
+            return False
+
+        logger.info(
+            f"[含息報酬指數] API 回傳 {len(df)} 筆, "
+            f"欄位: {list(df.columns)} "
+            f"(耗時 {_elapsed(t0)})"
+        )
+
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+
+        t1 = time.time()
+        ok = save_to_db(df, "total_return_index")
+        row_count = len(df) if ok else 0
+        logger.info(
+            f"[含息報酬指數] DB 寫入 {'成功' if ok else '失敗'}: {row_count} 筆 "
             f"(耗時 {_elapsed(t1)})"
         )
         self.limiter.wait()
