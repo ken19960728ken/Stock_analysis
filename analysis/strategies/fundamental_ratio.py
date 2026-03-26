@@ -59,7 +59,7 @@ class FundamentalRatioStrategy(Strategy):
         # --- 淨利率 ---
         ni_col = None
         for c in df.columns:
-            if "netincome" in c.lower() or "net_income" in c.lower():
+            if "incomeaftertaxes" in c.lower() or "netincome" in c.lower() or "net_income" in c.lower():
                 ni_col = c
                 break
 

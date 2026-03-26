@@ -175,7 +175,7 @@ def sample_financial_statements_data(sample_stock_id):
             datetime.date(2023, 12, 31),
         ],
         "stock_id": sample_stock_id,
-        "type": ["Revenue", "NetIncome", "TotalAssets", "TotalEquity"],
+        "type": ["Revenue", "IncomeAfterTaxes", "TotalAssets", "Equity"],
         "value": [450000000000, 150000000000, 2000000000000, 1200000000000],
     })
 
@@ -551,7 +551,7 @@ def sample_fundamental_wide(sample_stock_id):
         "Revenue": [4.5e11, 4.8e11, 5.0e11, 5.2e11],
         "GrossProfit": [1.5e11, 1.6e11, 1.7e11, 1.8e11],
         "OperatingIncome": [1.0e11, 1.1e11, 1.15e11, 1.2e11],
-        "NetIncome": [0.9e11, 0.95e11, 1.0e11, 1.05e11],
+        "IncomeAfterTaxes": [0.9e11, 0.95e11, 1.0e11, 1.05e11],
         "CashFlowsFromOperatingActivities": [1.2e11, 1.3e11, 1.1e11, 1.4e11],
     })
 

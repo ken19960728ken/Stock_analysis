@@ -236,7 +236,7 @@ class TestFundamentalLoading:
         df = pd.DataFrame({
             "stock_id": ["2330"] * 2,
             "date": pd.date_range("2023-03-31", periods=2, freq="QE"),
-            "type": ["Revenue", "NetIncome"],
+            "type": ["Revenue", "IncomeAfterTaxes"],
             "value": [4.5e11, 1.5e11],
         })
         with patch("pandas.read_sql", return_value=df):
@@ -284,7 +284,7 @@ class TestLoadFinancialRatios:
         raw = pd.DataFrame({
             "stock_id": ["2330"] * 4,
             "date": ["2023-03-31"] * 4,
-            "type": ["Revenue", "GrossProfit", "OperatingIncome", "NetIncome"],
+            "type": ["Revenue", "GrossProfit", "OperatingIncome", "IncomeAfterTaxes"],
             "value": [4.5e11, 1.5e11, 1.0e11, 0.9e11],
         })
         with patch("pandas.read_sql", return_value=raw):

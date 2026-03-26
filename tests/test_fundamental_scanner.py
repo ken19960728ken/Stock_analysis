@@ -36,9 +36,9 @@ class TestFundamentalScannerInitialization:
         """Test that FOCUS_METRICS is properly configured"""
         assert len(FOCUS_METRICS) > 0
         assert "Revenue" in FOCUS_METRICS
-        assert "NetIncome" in FOCUS_METRICS
+        assert "IncomeAfterTaxes" in FOCUS_METRICS
         assert "TotalAssets" in FOCUS_METRICS
-        assert "TotalEquity" in FOCUS_METRICS
+        assert "Equity" in FOCUS_METRICS
 
     def test_dual_rate_limiters(self, mock_finmind_client, mock_rate_limiter, mock_local_index):
         """Test that scanner has separate limiters for FinMind and Yahoo"""
@@ -205,7 +205,7 @@ class TestFundamentalScannerFinancialStatements:
         df_income = pd.DataFrame({
             "date": [datetime.date(2023, 3, 31)] * 4,
             "stock_id": sample_stock_id,
-            "type": ["Revenue", "NetIncome", "UnknownMetric", "AnotherUnknown"],
+            "type": ["Revenue", "IncomeAfterTaxes", "UnknownMetric", "AnotherUnknown"],
             "value": [450000000000, 150000000000, 100000, 50000],
         })
 
@@ -258,14 +258,14 @@ class TestFundamentalScannerFinancialStatements:
         df_income = pd.DataFrame({
             "date": [datetime.date(2023, 3, 31)] * 2,
             "stock_id": sample_stock_id,
-            "type": ["Revenue", "NetIncome"],
+            "type": ["Revenue", "IncomeAfterTaxes"],
             "value": [450000000000, 150000000000],
         })
 
         df_balance = pd.DataFrame({
             "date": [datetime.date(2023, 3, 31)] * 2,
             "stock_id": sample_stock_id,
-            "type": ["TotalAssets", "TotalEquity"],
+            "type": ["TotalAssets", "Equity"],
             "value": [2000000000000, 1200000000000],
         })
 
@@ -512,10 +512,10 @@ class TestFundamentalScannerIntegration:
         """Test that FOCUS_METRICS includes essential financial indicators"""
         essential_metrics = [
             "Revenue",
-            "NetIncome",
+            "IncomeAfterTaxes",
             "TotalAssets",
-            "TotalEquity",
-            "TotalLiabilities",
+            "Equity",
+            "Liabilities",
         ]
         for metric in essential_metrics:
             assert metric in FOCUS_METRICS

@@ -17,16 +17,19 @@ from core.scanner_base import BaseScanner
 logger = setup_logger("fundamental_scanner")
 
 FOCUS_METRICS = [
+    # 損益表 (taiwan_stock_financial_statement)
     "Revenue",
     "GrossProfit",
     "OperatingIncome",
-    "NetIncome",
-    "EarningsPerShare",
+    "IncomeAfterTaxes",  # 稅後淨利（舊名 NetIncome）
+    "EPS",               # 每股盈餘（舊名 EarningsPerShare）
+    # 資產負債表 (taiwan_stock_balance_sheet)
     "TotalAssets",
-    "TotalLiabilities",
-    "TotalEquity",
+    "Liabilities",       # 總負債（舊名 TotalLiabilities）
+    "Equity",            # 股東權益（舊名 TotalEquity）
+    # 現金流量表 (taiwan_stock_cash_flows_statement)
     "CashFlowsFromOperatingActivities",
-    "CapitalExpenditure",
+    "PropertyAndPlantAndEquipment",  # 資本支出（舊名 CapitalExpenditure）
 ]
 
 START_DATE = "2020-01-01"
@@ -120,6 +123,14 @@ class FundamentalScanner(BaseScanner):
         df_all = pd.concat(df_list, ignore_index=True)
         df_all["type"] = df_all["type"].astype(str).str.strip()
         df_filtered = df_all[df_all["type"].isin(FOCUS_METRICS)].copy()
+
+        # FOCUS_METRICS 匹配率檢查
+        missing_from_focus = set(FOCUS_METRICS) - set(df_all["type"].unique())
+        if missing_from_focus:
+            missing_str = ", ".join(sorted(missing_from_focus))
+            logger.warning(
+                f"[{stock_id}] FOCUS_METRICS 未在 API 回傳中匹配: {missing_str}"
+            )
 
         if df_filtered.empty:
             return None

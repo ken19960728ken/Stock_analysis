@@ -44,7 +44,7 @@ class TestFundamentalRatioStrategy:
         df = sample_fundamental_wide.copy()
         df["GrossProfit"] = df["Revenue"] * 0.01
         df["OperatingIncome"] = df["Revenue"] * 0.01
-        df["NetIncome"] = df["Revenue"] * 0.01
+        df["IncomeAfterTaxes"] = df["Revenue"] * 0.01
         s = FundamentalRatioStrategy()
         result = s.generate_signals(df)
         assert not (result["signal"] == 1).any()
@@ -57,7 +57,7 @@ class TestFundamentalRatioStrategy:
             "close": [580, 590, 585, 595],
             "Revenue": [4.5e11, 4.8e11, 5.0e11, 5.2e11],
             "OperatingIncome": [1.0e11, 1.1e11, 1.15e11, 1.2e11],
-            "NetIncome": [0.9e11, 0.95e11, 1.0e11, 1.05e11],
+            "IncomeAfterTaxes": [0.9e11, 0.95e11, 1.0e11, 1.05e11],
         })
         s = FundamentalRatioStrategy()
         s.set_params(min_conditions=1)
@@ -80,7 +80,7 @@ class TestFundamentalRatioStrategy:
         # 最後一季三率全部低於門檻
         df.loc[df.index[-1], "GrossProfit"] = df.loc[df.index[-1], "Revenue"] * 0.01
         df.loc[df.index[-1], "OperatingIncome"] = df.loc[df.index[-1], "Revenue"] * 0.01
-        df.loc[df.index[-1], "NetIncome"] = df.loc[df.index[-1], "Revenue"] * 0.01
+        df.loc[df.index[-1], "IncomeAfterTaxes"] = df.loc[df.index[-1], "Revenue"] * 0.01
         s = FundamentalRatioStrategy()
         result = s.generate_signals(df)
         assert (result["signal"] == -1).any()
@@ -131,7 +131,7 @@ class TestFreeCashFlowStrategy:
         df = sample_fundamental_wide.copy()
         df["market_value"] = 1e12
         # CapEx 接近 OCF，使 FCF ≈ 0 → yield ≈ 0% → 不達標
-        df["CapitalExpenditure"] = -df["CashFlowsFromOperatingActivities"] * 0.95
+        df["PropertyAndPlantAndEquipment"] = -df["CashFlowsFromOperatingActivities"] * 0.95
         s = FreeCashFlowStrategy()
         s.set_params(fcf_yield_threshold=5.0)
         result = s.generate_signals(df)

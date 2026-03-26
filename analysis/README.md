@@ -21,7 +21,7 @@ uv run python main.py --analysis
 |------|------|------|
 | **1. 個股分析** | 技術 + 籌碼 + 基本面 | K 線圖表、技術指標、三大法人、EPS/營收/股利、同業比較 |
 | **2. 因子篩選** | 多維度條件選股 | 估值/技術/成長/籌碼四大維度篩選，支援 CSV 匯出 |
-| **3. 策略回測** | 22 個內建策略 | 完整回測引擎（含手續費/稅/滑價）、0050 基準比較 |
+| **3. 策略回測** | 26 個內建策略 | 完整回測引擎（含手續費/稅/滑價）、0050 基準比較 |
 | **4. 配對交易** | 統計套利 | Engle-Granger 共整合檢定、Z-Score 進出場訊號 |
 | **5. 風險管理** | 持倉風險分析 | VaR/CVaR、Sharpe/Sortino、回撤分析、相關性矩陣 |
 | **6. 市場總覽** | 全市場概覽 | 漲跌分佈、法人排行、產業熱力圖、估值分佈、FRED 經濟指標 |
@@ -32,7 +32,7 @@ uv run python main.py --analysis
 | **11. 機器學習** | LightGBM 選股 | 多因子非線性組合、特徵重要性、Walk-Forward 回測 |
 | **12. 報告瀏覽** | 歷史報告查閱 | Markdown 渲染 + CSV 表格 + 檔案下載 |
 
-## 內建策略清單（22 個）
+## 內建策略清單（26 個）
 
 ### 技術面策略（10 個）
 
@@ -49,13 +49,17 @@ uv run python main.py --analysis
 | 量價動能 | `VolumePriceMomentumStrategy` | 放量突破 + OBV 資金流向確認 |
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | BB+KC Squeeze 壓縮後突破 |
 
-### 籌碼面策略（3 個）
+### 籌碼面策略（7 個）
 
 | 策略 | Class | 核心邏輯 |
 |------|-------|---------|
 | 法人跟單 | `InstitutionalStrategy` | 法人連續 N 日買超/賣超 |
 | 融資融券訊號 | `MarginSignalStrategy` | 融資減少 + 股價上漲 = 籌碼沉澱 |
 | 股權集中度 | `OwnershipConcentrationStrategy` | 大股東增持 + 股東人數減少 |
+| 當沖情緒反轉 | `DayTradeSentimentStrategy` | 當沖比例 Z-Score 逆向交易（散戶情緒反指標） |
+| 外資連續買超 | `ForeignBrokerTrackingStrategy` | 外資券商連續買超追蹤 |
+| 散戶vs主力 | `RetailVsInstitutionalStrategy` | 散戶當沖 vs 主力籌碼背離 |
+| 官股護盤 | `GovBankShieldStrategy` | 官股買超力道異常放大 + 大盤下跌時買入 |
 
 ### 基本面策略（4 個）
 
@@ -148,7 +152,7 @@ class Strategy(ABC):
 
 - [1. 個股分析](documents/1_個股分析/)（含同業比較分析）
 - [2. 因子篩選](documents/2_因子篩選/)
-- [3. 策略回測](documents/3_策略回測/)（含 [22 個策略獨立文件](documents/3_策略回測/strategies/)）
+- [3. 策略回測](documents/3_策略回測/)（含 [26 個策略獨立文件](documents/3_策略回測/strategies/)）
 - [4. 配對交易](documents/4_配對交易/)
 - [5. 風險管理](documents/5_風險管理/)
 - [6. 市場總覽](documents/6_市場總覽/)（含產業熱力圖）

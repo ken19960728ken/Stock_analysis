@@ -2,6 +2,16 @@
 
 本專案遵循 [Keep a Changelog](https://keepachangelog.com/) 格式與 [Semantic Versioning](https://semver.org/)。
 
+## [Unreleased]
+
+### Added
+- **當沖情緒反轉策略**（`DayTradeSentimentStrategy`）：當沖比例 Z-Score 作為散戶情緒反向指標，策略總數 22→23
+- **權證過濾**：`save_to_db` 自動過濾 `stock_id` >= 6 碼的權證資料
+
+### Changed
+- **FOCUS_METRICS 修正**：5 個 FinMind type 名稱更正（NetIncome→IncomeAfterTaxes, EarningsPerShare→EPS, TotalLiabilities→Liabilities, TotalEquity→Equity, CapitalExpenditure→PropertyAndPlantAndEquipment）
+- **FCF 策略升級**：Level 2（OCF 趨勢分析）+ Level 3（盈餘品質檢驗）
+
 ## [1.1.0] - 2026-03-20
 
 ### Added

@@ -25,6 +25,7 @@ class BacktestResult:
     drawdown_curve: pd.Series = field(default_factory=pd.Series)
     trades: pd.DataFrame = field(default_factory=pd.DataFrame)
     monthly_returns: pd.Series = field(default_factory=pd.Series)
+    annual_breakdown: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 class Strategy(ABC):

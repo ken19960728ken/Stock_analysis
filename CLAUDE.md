@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 台灣股市量化交易系統，分為兩大部分：
 
 1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（22 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（26 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -126,7 +126,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
 | `analysis/pages/13_推薦追蹤.py` | 推薦命中率儀表板（整體勝率、策略拆分、排名 vs 績效、時間趨勢） |
-| `analysis/strategies/` | 22 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/strategies/` | 26 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
@@ -145,7 +145,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/granger_chain.py` | Granger 因果供應鏈自動發現（全配對檢定 + DAG + 網絡圖 + 快取） |
 | `analysis/utils/recommendation_db.py` | 推薦追蹤資料層（SQLite/Supabase 切換 + JSONB 轉換） |
 
-#### 策略清單（22 個）
+#### 策略清單（26 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -171,6 +171,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 營收動能 | `RevenueMomentumStrategy` | 基本面（營收 YoY 加速 + 營收新高） |
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
 | 次產業輪動 | `SubIndustryRotationStrategy` | 產業面（次產業營收動能+法人流向排名） |
+| 當沖情緒反轉 | `DayTradeSentimentStrategy` | 籌碼面（當沖比例 Z-Score 逆向交易） |
+| 外資連續買超 | `ForeignBrokerTrackingStrategy` | 籌碼面（外資券商連續買超追蹤） |
+| 散戶vs主力 | `RetailVsInstitutionalStrategy` | 籌碼面（散戶當沖 vs 主力籌碼背離） |
+| 官股護盤 | `GovBankShieldStrategy` | 籌碼面（官股買超力道異常放大 + 大盤下跌） |
 
 ### 部署 `deploy/`
 
@@ -207,7 +211,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | Script | Description |
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
-| `strategy_report.py` | 通用策略掃描回測報告（22 策略 + 0050 基準比較） |
+| `strategy_report.py` | 通用策略掃描回測報告（23 策略 + 0050 基準比較） |
 | `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 | `db_integrity_check.py` | DB 完整性掃描（交易日清單、每日記錄數、重複偵測、跨表一致性） |
@@ -306,6 +310,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_data_publication_delay.py` | 資料公布延遲常數 + 偏移函式測試（10 項） |
 | `test_alert_manager.py` | 告警管理測試（執行日誌記錄 + 告警升級，13 項） |
 | `test_health_check.py` | 資料健檢測試（DB 連線 + 筆數 + 異常值 + 告警內文，9 項） |
+| `test_day_trade_sentiment.py` | 當沖情緒反轉策略測試（訊號生成、Z-Score、參數邊界，13 項） |
+| `test_gov_bank_shield.py` | 官股護盤偵測策略測試（訊號生成、力道閾值、持有天數，8 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration
@@ -318,7 +324,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ## Key Patterns
 
-- **資料來源驗證（嚴格執行）**：策略建構或視覺化呈現中，**禁止憑空假設欄位或資料存在**。所有 DB 欄位引用必須先從 API 文件或 DB 實際查詢確認後才能使用。FinMind API 完整欄位定義見 `memory/finmind-api-schema.md`（來源: https://finmind.github.io/llms-full.txt ），開發時**優先參考此文件**。若欄位不在 API 中，必須明確標註為「自行計算」並在 `data_loader` 層實作。不確定時用 `safe_read_sql('SELECT * FROM table LIMIT 1')` 確認實際 DB schema。
+- **資料來源驗證（嚴格執行）**：策略建構或視覺化呈現中，**禁止憑空假設欄位或資料存在**。所有 DB 欄位引用必須先從 API 文件或 DB 實際查詢確認後才能使用。FinMind API 完整欄位定義見 `memory/finmind-api-schema.md`（來源: https://finmind.github.io/llms-full.txt + 2026-03-25 實際 API 呼叫驗證），開發時**優先參考此文件的「API 實際回傳值驗證」章節**。若欄位不在 API 中，必須明確標註為「自行計算」並在 `data_loader` 層實作。不確定時用 `safe_read_sql('SELECT * FROM table LIMIT 1')` 確認實際 DB schema。**新增 FinMind API 或修改 FOCUS_METRICS 時，必須先實際呼叫 API 驗證回傳的欄位/type 名稱，完整規範見 `docs/database-schema.md` 的 Data Source Verification Protocol。**
 - All DB writes use SQLAlchemy with `if_exists="append"` via pandas `to_sql`.
 - **資料公布延遲模型**：所有 `enrich_data()` 在合併非價格資料前，會根據 `DATA_PUBLICATION_DELAY`（`core/constants.py`）對資料日期做延遲偏移（`apply_publication_delay()`），避免回測中使用尚未公布的資料。月營收延遲 10 天、季報延遲 45 天、籌碼/估值延遲 1 天。
 - All scanners inherit from `BaseScanner`，提供 tqdm 進度條、Ctrl+C 安全中斷、斷點續傳、結算報告。
@@ -374,7 +380,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
    - `analysis/documents/3_策略回測/strategies/README.md` — 更新策略索引表
    - `analysis/documents/測試說明.md` — 更新測試模組表格 + 合計數
    - `analysis/strategies/__init__.py` — 註冊新策略到 `STRATEGY_MAP`
-   - `CLAUDE.md` — 更新策略清單表格（22→N）、Tests 表格
+   - `CLAUDE.md` — 更新策略清單表格（23→N）、Tests 表格
    - `README.md` — 更新策略數量
    - `analysis/README.md` — 更新內建策略清單
    - `CHANGELOG.md` — 記錄變更
@@ -382,7 +388,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 
 ### 開發規範
 
-- **禁止憑空捏造資料欄位**：新增任何 DB 欄位引用或策略所需資料前，必須先查閱 `memory/finmind-api-schema.md`（FinMind API 官方欄位定義）確認資料來源實際提供該欄位。若 API 不提供，須在 `data_loader` 層自行計算並明確標註。曾因假設 `month_revenue_year_on_year` 欄位存在，導致 20+ 處引用靜默失效。
+- **禁止憑空捏造資料欄位**：新增任何 DB 欄位引用或策略所需資料前，必須**實際呼叫 API** 確認回傳的欄位/type 名稱（不能只讀文件推測）。FinMind 的命名沒有統一慣例（如 `NetIncome` 實際叫 `IncomeAfterTaxes`、`CapitalExpenditure` 實際叫 `PropertyAndPlantAndEquipment`），**絕對不能假設名稱**。完整驗證流程見 `docs/database-schema.md` 的 Data Source Verification Protocol。歷史教訓：(1) `month_revenue_year_on_year` 假設存在但 API 不提供，20+ 處靜默失效 (2) FOCUS_METRICS 5 個 type 名稱錯誤，導致 NetIncome/EPS/Liabilities/Equity/CapEx 從未寫入 DB。
 - 執行重大操作（如切換功能）前，先 git commit 並 push 當前改動。
 - **修改 `analysis/` 相關程式碼後，必須完成以下兩步**：
   1. 更新對應文件（`analysis/documents/` 下的模型文件 + `README.md` 中的相關描述）
@@ -391,7 +397,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - **改動程式碼後必須主動同步所有相關 .md 文件，不等使用者提醒，且不可遺漏**。完整的「程式碼變更 → 文件同步」對應規則記錄在 auto memory 的 `doc-sync-rules.md`，每次改動前先查閱。數字常量（策略數、測試數、頁面數）改動後必須 grep 確認所有出處。
 - **資料夾/檔案結構變更**（搬移、重新命名、拆分、合併）後，必須用 `grep -rn "舊路徑" --include="*.md" --include="*.py"` 全專案搜尋殘留引用，逐一更新。同時更新 CLAUDE.md 架構描述、README、analysis/README 文件索引、`.gitignore`、doc-sync-rules.md 中的路徑。
 - Supabase SQL Editor 執行 `ALTER TABLE` 時不能加 `public.` schema 前綴（直接用 `ALTER TABLE table_name ...`）。
-- 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 22`），新增策略時需全域搜尋並更新所有相關斷言。
+- 測試中避免硬編碼策略數量（如 `assert len(STRATEGY_MAP) == 23`），新增策略時需全域搜尋並更新所有相關斷言。
 
 ### 版本管控規範
 

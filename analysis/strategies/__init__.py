@@ -21,6 +21,10 @@ from analysis.strategies.volume_price_momentum import VolumePriceMomentumStrateg
 from analysis.strategies.revenue_momentum import RevenueMomentumStrategy
 from analysis.strategies.volatility_squeeze import VolatilitySqueezeStrategy
 from analysis.strategies.sub_industry_rotation import SubIndustryRotationStrategy
+from analysis.strategies.day_trade_sentiment import DayTradeSentimentStrategy
+from analysis.strategies.foreign_broker_tracking import ForeignBrokerTrackingStrategy
+from analysis.strategies.retail_vs_institutional import RetailVsInstitutionalStrategy
+from analysis.strategies.gov_bank_shield import GovBankShieldStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -45,4 +49,8 @@ STRATEGY_MAP = {
     "營收動能": RevenueMomentumStrategy,
     "波動率壓縮突破": VolatilitySqueezeStrategy,
     "次產業輪動": SubIndustryRotationStrategy,
+    "當沖情緒反轉": DayTradeSentimentStrategy,
+    "外資連續買超": ForeignBrokerTrackingStrategy,
+    "散戶vs主力": RetailVsInstitutionalStrategy,
+    "官股護盤": GovBankShieldStrategy,
 }

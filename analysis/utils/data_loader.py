@@ -389,9 +389,10 @@ def load_financial_ratios(stock_id: str) -> pd.DataFrame:
         if "Revenue" in pivoted.columns and "OperatingIncome" in pivoted.columns:
             rev = pd.to_numeric(pivoted["Revenue"], errors="coerce")
             pivoted["operating_margin"] = pd.to_numeric(pivoted["OperatingIncome"], errors="coerce") / rev.replace(0, float("nan")) * 100
-        if "Revenue" in pivoted.columns and "NetIncome" in pivoted.columns:
+        ni_col = "IncomeAfterTaxes" if "IncomeAfterTaxes" in pivoted.columns else "NetIncome" if "NetIncome" in pivoted.columns else None
+        if "Revenue" in pivoted.columns and ni_col is not None:
             rev = pd.to_numeric(pivoted["Revenue"], errors="coerce")
-            pivoted["net_margin"] = pd.to_numeric(pivoted["NetIncome"], errors="coerce") / rev.replace(0, float("nan")) * 100
+            pivoted["net_margin"] = pd.to_numeric(pivoted[ni_col], errors="coerce") / rev.replace(0, float("nan")) * 100
 
         return pivoted
     except Exception:
@@ -822,11 +823,11 @@ def load_dividend_events_all(start_date: str = None) -> pd.DataFrame:
 
 @st.cache_data(ttl=600)
 def load_earnings_dates_all(start_date: str = None) -> pd.DataFrame:
-    """全市場財報公布日 (從 financial_reports 取 type='EarningsPerShare' 的日期)"""
+    """全市場財報公布日 (從 financial_reports 取 type='EPS' 或 'EarningsPerShare' 的日期)"""
     sql = """
     SELECT stock_id, date, value as eps_value
     FROM financial_reports
-    WHERE type = 'EarningsPerShare'
+    WHERE type IN ('EPS', 'EarningsPerShare')
     """
     params = {}
     if start_date:

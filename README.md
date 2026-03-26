@@ -1,6 +1,6 @@
 # Stock Analysis - 台灣股市量化交易系統
 
-> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（22 個內建策略、12 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
+> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（26 個內建策略、12 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 ### 量化分析平台（Streamlit，12 個頁面）
 - [x] 個股分析（K 線、技術指標、籌碼、基本面、同業比較，支援日/週/月K切換）
 - [x] 多維度因子篩選選股
-- [x] 22 個內建交易策略 + 績效報告
+- [x] 26 個內建交易策略 + 績效報告
 - [x] 配對交易（Engle-Granger 共整合 + Z-Score）
 - [x] 風險管理（VaR、最大回撤、相關性矩陣）
 - [x] 市場總覽（全市場漲跌、法人動向、估值分佈、FRED 經濟指標）
@@ -146,7 +146,7 @@ bash deploy/setup-scheduler.sh        # 設定排程（只需一次）
 ### 運行測試
 
 ```bash
-uv run pytest tests/ -v    # 808 個測試
+uv run pytest tests/ -v    # 952 個測試
 ```
 
 ## 專案架構
@@ -178,7 +178,7 @@ Stock_analysis/
 │   ├── pages/                     # 12 個分析頁面
 │   │   ├── 1_個股分析.py          # K 線、指標、籌碼、基本面、同業比較
 │   │   ├── 2_因子篩選.py          # 多維度條件過濾選股
-│   │   ├── 3_策略回測.py          # 22 策略 + 績效報告
+│   │   ├── 3_策略回測.py          # 23 策略 + 績效報告
 │   │   ├── 4_配對交易.py          # 共整合 + Z-Score
 │   │   ├── 5_風險管理.py          # VaR、回撤、相關性
 │   │   ├── 6_市場總覽.py          # 全市場漲跌、法人、估值
@@ -188,7 +188,7 @@ Stock_analysis/
 │   │   ├── 10_事件分析.py         # 除息/財報事件 CAR/AAR
 │   │   ├── 11_機器學習.py         # LightGBM 選股 + Walk-Forward
 │   │   └── 12_報告瀏覽.py         # Markdown 渲染 + CSV 表格
-│   ├── strategies/                # 22 個交易策略
+│   ├── strategies/                # 26 個交易策略
 │   │   ├── base.py                # Strategy ABC + BacktestResult
 │   │   ├── ma_cross.py            # MA 交叉
 │   │   ├── macd_signal.py         # MACD 訊號
@@ -250,14 +250,14 @@ Stock_analysis/
 ├── Dockerfile.analysis            # Cloud Run Service 映像
 ├── .dockerignore                  # Docker 排除清單
 ├── .streamlit/config.toml         # Streamlit 雲端配置
-├── tests/                         # 測試套件（808 個測試）
+├── tests/                         # 測試套件（952 個測試）
 ├── pyproject.toml                 # 專案設定（uv, optional-dependencies）
 └── .env                           # 環境變數（.gitignore）
 ```
 
 ## 交易策略
 
-系統內建 22 個交易策略，涵蓋技術面、籌碼面、基本面、事件面、產業面與機器學習：
+系統內建 26 個交易策略，涵蓋技術面、籌碼面、基本面、事件面、產業面與機器學習：
 
 | 策略 | 類型 | 說明 |
 |---|---|---|
@@ -274,6 +274,7 @@ Stock_analysis/
 | 法人跟單 | 籌碼面 | 跟隨三大法人買賣超 |
 | 融資融券訊號 | 籌碼面 | 融資減少 + 股價上漲 |
 | 股權集中度 | 籌碼面 | 大戶持股增加 + 股東人數減少 |
+| 當沖情緒反轉 | 籌碼面 | 當沖比例 Z-Score 逆向交易 |
 | 價值投資 | 基本面 | 低估值 + 高殖利率 |
 | 財報三率 | 基本面 | 毛利率、營益率、淨利率 |
 | 自由現金流 | 基本面 | 自由現金流正向成長 |
@@ -319,7 +320,7 @@ Stock_analysis/
 - **監控儀表板** — FastAPI, Uvicorn, Chart.js
 - **雲端部署** — GCP Cloud Run (Job + Service) + Cloud Scheduler + Artifact Registry + Secret Manager
 - **容器化** — Docker（兩個 Dockerfile，amd64 交叉建置）
-- **測試** — pytest（808 個測試）
+- **測試** — pytest（952 個測試）
 
 ## 第三方服務
 
