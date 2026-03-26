@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 台灣股市量化交易系統，分為兩大部分：
 
 1. **資料撈取**：撈取台灣股市商品信息、三年內價格資料（日/週/月K）、籌碼資料、財務報表，儲存至 Supabase PostgreSQL。
-2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（23 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
+2. **分析與策略**：基於撈取的資料做資料整理分析、制定量化交易策略（26 個內建策略）、回測引擎、風險管理，最終目標是實戰部署。
 
 ## AI 角色定位
 
@@ -126,7 +126,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
 | `analysis/pages/13_推薦追蹤.py` | 推薦命中率儀表板（整體勝率、策略拆分、排名 vs 績效、時間趨勢） |
-| `analysis/strategies/` | 23 個策略 (Strategy Pattern)，見下方策略清單 |
+| `analysis/strategies/` | 26 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
@@ -145,7 +145,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/utils/granger_chain.py` | Granger 因果供應鏈自動發現（全配對檢定 + DAG + 網絡圖 + 快取） |
 | `analysis/utils/recommendation_db.py` | 推薦追蹤資料層（SQLite/Supabase 切換 + JSONB 轉換） |
 
-#### 策略清單（23 個）
+#### 策略清單（26 個）
 
 | 策略名稱 | Class | 類型 |
 |---|---|---|
@@ -172,6 +172,9 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | 技術面（BB+KC Squeeze 突破） |
 | 次產業輪動 | `SubIndustryRotationStrategy` | 產業面（次產業營收動能+法人流向排名） |
 | 當沖情緒反轉 | `DayTradeSentimentStrategy` | 籌碼面（當沖比例 Z-Score 逆向交易） |
+| 外資連續買超 | `ForeignBrokerTrackingStrategy` | 籌碼面（外資券商連續買超追蹤） |
+| 散戶vs主力 | `RetailVsInstitutionalStrategy` | 籌碼面（散戶當沖 vs 主力籌碼背離） |
+| 官股護盤 | `GovBankShieldStrategy` | 籌碼面（官股買超力道異常放大 + 大盤下跌） |
 
 ### 部署 `deploy/`
 
@@ -308,6 +311,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_alert_manager.py` | 告警管理測試（執行日誌記錄 + 告警升級，13 項） |
 | `test_health_check.py` | 資料健檢測試（DB 連線 + 筆數 + 異常值 + 告警內文，9 項） |
 | `test_day_trade_sentiment.py` | 當沖情緒反轉策略測試（訊號生成、Z-Score、參數邊界，13 項） |
+| `test_gov_bank_shield.py` | 官股護盤偵測策略測試（訊號生成、力道閾值、持有天數，8 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
 
 ### Configuration

@@ -24,6 +24,7 @@ from analysis.strategies.sub_industry_rotation import SubIndustryRotationStrateg
 from analysis.strategies.day_trade_sentiment import DayTradeSentimentStrategy
 from analysis.strategies.foreign_broker_tracking import ForeignBrokerTrackingStrategy
 from analysis.strategies.retail_vs_institutional import RetailVsInstitutionalStrategy
+from analysis.strategies.gov_bank_shield import GovBankShieldStrategy
 
 STRATEGY_MAP = {
     "MA 交叉": MACrossStrategy,
@@ -51,4 +52,5 @@ STRATEGY_MAP = {
     "當沖情緒反轉": DayTradeSentimentStrategy,
     "外資連續買超": ForeignBrokerTrackingStrategy,
     "散戶vs主力": RetailVsInstitutionalStrategy,
+    "官股護盤": GovBankShieldStrategy,
 }

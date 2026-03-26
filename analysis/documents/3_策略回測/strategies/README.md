@@ -1,6 +1,6 @@
 # 策略文件索引
 
-本目錄包含 23 個內建策略的獨立文件，每個策略的 README.md 整合了：
+本目錄包含 26 個內建策略的獨立文件，每個策略的 README.md 整合了：
 - 核心邏輯與買賣條件
 - 完整參數說明（預設值、建議範圍）
 - 學理基礎與參考文獻
@@ -24,7 +24,7 @@
 | 9 | 量價動能 | `VolumePriceMomentumStrategy` | [09_量價動能](09_量價動能/) |
 | 10 | 波動率壓縮突破 | `VolatilitySqueezeStrategy` | [10_波動率壓縮突破](10_波動率壓縮突破/) |
 
-## 籌碼面策略（4 個）
+## 籌碼面策略（7 個）
 
 | # | 策略 | Class | 資料夾 |
 |---|------|-------|--------|
@@ -32,6 +32,9 @@
 | 12 | 融資融券訊號 | `MarginSignalStrategy` | [12_融資融券訊號](12_融資融券訊號/) |
 | 13 | 股權集中度 | `OwnershipConcentrationStrategy` | [13_股權集中度](13_股權集中度/) |
 | 23 | 當沖情緒反轉 | `DayTradeSentimentStrategy` | [23_當沖情緒反轉](23_當沖情緒反轉/) |
+| 24 | 外資連續買超 | `ForeignBrokerTrackingStrategy` | 24_外資連續買超/ |
+| 25 | 散戶vs主力 | `RetailVsInstitutionalStrategy` | 25_散戶vs主力/ |
+| 26 | 官股護盤 | `GovBankShieldStrategy` | [26_官股護盤](26_官股護盤/) |
 
 ## 基本面策略（4 個）
 

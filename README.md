@@ -1,6 +1,6 @@
 # Stock Analysis - 台灣股市量化交易系統
 
-> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（23 個內建策略、12 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
+> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（26 個內建策略、12 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 ### 量化分析平台（Streamlit，12 個頁面）
 - [x] 個股分析（K 線、技術指標、籌碼、基本面、同業比較，支援日/週/月K切換）
 - [x] 多維度因子篩選選股
-- [x] 23 個內建交易策略 + 績效報告
+- [x] 26 個內建交易策略 + 績效報告
 - [x] 配對交易（Engle-Granger 共整合 + Z-Score）
 - [x] 風險管理（VaR、最大回撤、相關性矩陣）
 - [x] 市場總覽（全市場漲跌、法人動向、估值分佈、FRED 經濟指標）
@@ -188,7 +188,7 @@ Stock_analysis/
 │   │   ├── 10_事件分析.py         # 除息/財報事件 CAR/AAR
 │   │   ├── 11_機器學習.py         # LightGBM 選股 + Walk-Forward
 │   │   └── 12_報告瀏覽.py         # Markdown 渲染 + CSV 表格
-│   ├── strategies/                # 23 個交易策略
+│   ├── strategies/                # 26 個交易策略
 │   │   ├── base.py                # Strategy ABC + BacktestResult
 │   │   ├── ma_cross.py            # MA 交叉
 │   │   ├── macd_signal.py         # MACD 訊號
@@ -257,7 +257,7 @@ Stock_analysis/
 
 ## 交易策略
 
-系統內建 23 個交易策略，涵蓋技術面、籌碼面、基本面、事件面、產業面與機器學習：
+系統內建 26 個交易策略，涵蓋技術面、籌碼面、基本面、事件面、產業面與機器學習：
 
 | 策略 | 類型 | 說明 |
 |---|---|---|

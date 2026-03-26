@@ -105,6 +105,7 @@ DATA_PUBLICATION_DELAY = {
     "market_value":            1,   # 隔日公布
     "chip_broker":             1,   # 隔日公布（券商分點買賣明細）
     "day_trading":             1,   # 隔日公布（當日沖銷交易統計）
+    "chip_gov_bank":           1,   # 隔日公布（官股行庫買賣超）
 }
 
 

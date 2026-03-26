@@ -63,6 +63,7 @@ STRATEGY_DATA_NEEDS = {
     "當沖情緒反轉": ["day_trading"],
     "外資連續買超": ["chip_broker"],
     "散戶vs主力": ["day_trading", "chip_broker"],
+    "官股護盤": ["chip_gov_bank"],
 }
 
 
@@ -209,6 +210,24 @@ def load_chip_broker(engine, stock_id: str, start_date: str) -> pd.DataFrame:
     return df
 
 
+def load_chip_gov_bank(engine, stock_id: str, start_date: str) -> pd.DataFrame:
+    """載入官股行庫買賣超（聚合為每日一筆）"""
+    sql = text(
+        "SELECT date, "
+        "SUM(buy) as gov_buy, "
+        "SUM(sell) as gov_sell, "
+        "SUM(buy - sell) as gov_net, "
+        "COUNT(DISTINCT bank_name) as gov_bank_count "
+        "FROM chip_gov_bank "
+        "WHERE stock_id = :sid AND date >= :start "
+        "GROUP BY date ORDER BY date"
+    )
+    df = safe_read_sql(sql, params={"sid": stock_id, "start": start_date})
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
 def load_day_trading(engine, stock_id: str, start_date: str) -> pd.DataFrame:
     """載入當日沖銷交易統計"""
     sql = text(
@@ -340,6 +359,12 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
             extra = load_day_trading(engine, stock_id, start_date)
             if not extra.empty:
                 extra = apply_publication_delay(extra, "day_trading")
+                df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "chip_gov_bank":
+            extra = load_chip_gov_bank(engine, stock_id, start_date)
+            if not extra.empty:
+                extra = apply_publication_delay(extra, "chip_gov_bank")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
 
     return df

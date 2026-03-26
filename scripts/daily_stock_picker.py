@@ -72,6 +72,7 @@ STRATEGY_DATA_NEEDS = {
     "當沖情緒反轉": ["day_trading"],
     "外資連續買超": ["chip_broker"],
     "散戶vs主力": ["day_trading", "chip_broker"],
+    "官股護盤": ["chip_gov_bank"],
 }
 
 DEFAULT_TOP_N = 20
@@ -84,7 +85,7 @@ VALID_TABLES = frozenset({
     "daily_price", "chip_institutional", "stock_per", "month_revenue",
     "twstock_code", "industry_classification",
     "recommendation_history",  # 選股推薦追蹤
-    "chip_broker", "day_trading",
+    "chip_broker", "day_trading", "chip_gov_bank",
 })
 
 
@@ -603,6 +604,28 @@ def enrich_data(engine, df: pd.DataFrame, stock_id: str,
                 extra = extra[keep_cols].sort_values("date")
                 extra = apply_publication_delay(extra, "day_trading")
                 df = pd.merge_asof(df, extra, on="date", direction="backward")
+
+        elif table == "chip_gov_bank":
+            # 聚合為每日一筆（_load_table 回傳明細，需聚合）
+            if "buy" in extra.columns and "sell" in extra.columns:
+                agg = extra.groupby("date").agg(
+                    gov_buy=("buy", "sum"),
+                    gov_sell=("sell", "sum"),
+                    gov_net=pd.NamedAgg(column="buy", aggfunc="sum"),
+                ).reset_index()
+                # gov_net = buy - sell
+                sell_sum = extra.groupby("date")["sell"].sum()
+                agg["gov_net"] = agg["gov_buy"] - sell_sum.values
+                if "bank_name" in extra.columns:
+                    bank_counts = extra.groupby("date")["bank_name"].nunique().reset_index()
+                    bank_counts.columns = ["date", "gov_bank_count"]
+                    agg = agg.merge(bank_counts, on="date", how="left")
+                agg = agg.sort_values("date")
+            else:
+                # 已經是聚合後的資料
+                agg = extra.drop(columns=["stock_id"], errors="ignore").sort_values("date")
+            agg = apply_publication_delay(agg, "chip_gov_bank")
+            df = pd.merge_asof(df, agg, on="date", direction="backward")
 
     return df
 
