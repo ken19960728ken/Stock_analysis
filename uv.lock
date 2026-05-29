@@ -1274,6 +1274,18 @@ wheels = [
 ]
 
 [[package]]
+name = "shioaji"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/6f/c1cb68dae091d8947eed2d7726ebabd6c4086347345d5d1a65f95f72c1d8/shioaji-1.5.1-cp37-abi3-macosx_10_15_x86_64.whl", hash = "sha256:b4c44d0290ce565a9fde1e17764bec821f23754641f1643dcbafc0b19f3649da", size = 36156927, upload-time = "2026-05-27T04:00:11.64Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/76/3996e79bf732975c8edc392cc093d4df0853c4cf79c1e57e41f6314c34e4/shioaji-1.5.1-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:a9b6c6e0286b3cf43433224108d374dcdfaf316dd51d5b53523b0f6054e542ff", size = 33367736, upload-time = "2026-05-27T04:00:54.991Z" },
+    { url = "https://files.pythonhosted.org/packages/72/51/cd4595d2052c544fa230be83b70b5c2030ce435d75eed3282c9c906a264b/shioaji-1.5.1-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2f5a6b77ebdc961cd1ac1203fd07140fdd3837750471615103d8e74216585b20", size = 37767159, upload-time = "2026-05-27T03:59:44.891Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/c1/033d953cb9b67b4cf2caa657bfd269b0996f66e6558b0e3260bd883be594/shioaji-1.5.1-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:4ea14e9d683a892fd63ad8498d25dec290468c538b2588c37b3c8e5818b80c1e", size = 35406780, upload-time = "2026-05-27T03:58:59.21Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/3b/5092aeb22b97ed5de94ed0013f16dfd5fdcfe814882e0722ab15852f5635/shioaji-1.5.1-cp37-abi3-win_amd64.whl", hash = "sha256:116af6e3567f5380a7d6112749b1d5e93673ec00ee123d7f740d37ea087da511", size = 39733467, upload-time = "2026-05-27T03:57:39.979Z" },
+]
+
+[[package]]
 name = "simplejson"
 version = "3.20.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1392,7 +1404,7 @@ wheels = [
 
 [[package]]
 name = "stock-analysis"
-version = "1.1.0"
+version = "1.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "lightgbm" },
@@ -1405,6 +1417,7 @@ dependencies = [
     { name = "requests" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "shioaji" },
     { name = "sqlalchemy" },
     { name = "statsmodels" },
 ]
@@ -1458,6 +1471,7 @@ requires-dist = [
     { name = "requests" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "scipy", specifier = ">=1.11.0" },
+    { name = "shioaji", specifier = ">=1.5.1" },
     { name = "sqlalchemy" },
     { name = "statsmodels", specifier = ">=0.14.0" },
     { name = "stock-analysis", extras = ["pipeline", "analysis", "dashboard", "test"], marker = "extra == 'all'" },

@@ -74,15 +74,17 @@ class TestSaveToDb:
         with pytest.raises(ValueError, match="非法資料表名稱"):
             save_to_db(df, "evil_table")
 
+    @patch("core.db._get_table_columns", return_value=None)
     @patch("core.db._save_chunk", return_value=True)
-    def test_valid_table_calls_save_chunk(self, mock_chunk):
+    def test_valid_table_calls_save_chunk(self, mock_chunk, _mock_cols):
         df = pd.DataFrame({"a": [1, 2]})
         result = save_to_db(df, "daily_price")
         mock_chunk.assert_called_once()
         assert result is True
 
+    @patch("core.db._get_table_columns", return_value=None)
     @patch("core.db._save_chunk", side_effect=Exception("DB error"))
-    def test_save_chunk_exception_propagates(self, mock_chunk):
+    def test_save_chunk_exception_propagates(self, mock_chunk, _mock_cols):
         df = pd.DataFrame({"a": [1]})
         with pytest.raises(Exception, match="DB error"):
             save_to_db(df, "daily_price")

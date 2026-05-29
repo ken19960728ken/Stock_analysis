@@ -95,6 +95,11 @@ deploy_job "stock-fundamental" "1Gi" "1" "7200s" \
     "SUPABASE_URL=supabase-url:latest,FINMIND_TOKEN=finmind-token:latest" \
     "--daily-fundamental"
 
+# Job 4: stock-paper-trading — Paper Trading 模擬交易
+deploy_job "stock-paper-trading" "2Gi" "2" "1800s" \
+    "SUPABASE_URL=supabase-url:latest,FINMIND_TOKEN=finmind-token:latest,EMAIL_APP_PASSWORD=email-app-password:latest" \
+    "--paper-trading"
+
 echo ""
 echo "=== 部署完成 ==="
 echo "版本: ${VERSION} | 映像標籤: ${IMAGE_TAG}"
@@ -104,5 +109,6 @@ echo "手動觸發:"
 echo "  gcloud run jobs execute stock-data --region=$REGION --project=$PROJECT_ID"
 echo "  gcloud run jobs execute stock-report --region=$REGION --project=$PROJECT_ID"
 echo "  gcloud run jobs execute stock-fundamental --region=$REGION --project=$PROJECT_ID"
+echo "  gcloud run jobs execute stock-paper-trading --region=$REGION --project=$PROJECT_ID"
 echo "回滾方式:"
 echo "  gcloud run jobs update stock-data --image=${IMAGE_BASE}:<舊版標籤> --region=$REGION --project=$PROJECT_ID"

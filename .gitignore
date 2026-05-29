@@ -34,4 +34,4 @@ db_backup_*/
 analysis/documents/**/*.pdf
 
 # Claude Code
-.claude/
+.claude/shioaji.log
