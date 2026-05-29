@@ -105,6 +105,46 @@ class TestBackfillPerformance:
         result = backfill_performance()
         assert result >= 0  # 不會拋錯
 
+    @patch("scripts.performance_tracker.safe_read_sql")
+    @patch("scripts.performance_tracker.get_engine")
+    def test_backfill_handles_nan_columns(self, mock_engine, mock_sql):
+        """Regression: pandas 讀 SQL NULL 為 float64 NaN（非 None）。
+
+        舊版用 `row["return_t5"] is None` 判斷，對 NaN 永遠 False，
+        導致回填從不更新。此測試用 np.nan 重現真實 DB 讀取情境，
+        確認 pd.isna 路徑會正確計算並執行 UPDATE。
+        """
+        pending = pd.DataFrame({
+            "id": [1],
+            "report_date": [pd.Timestamp("2026-03-10")],
+            "stock_id": ["2330"],
+            "entry_price": [850.0],
+            "return_t5": [np.nan],
+            "return_t10": [np.nan],
+            "return_t20": [np.nan],
+        })
+        # 確認模擬的是 float64 + NaN（真實 DB 讀取行為），非 object + None
+        assert pending["return_t5"].dtype == np.float64
+        prices = pd.DataFrame({
+            "date": pd.bdate_range("2026-03-11", periods=25, freq="B"),
+            "close": [855 + i * 0.5 for i in range(25)],
+        })
+        mock_sql.side_effect = [pending, prices]
+
+        mock_conn = MagicMock()
+        mock_engine.return_value.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_engine.return_value.connect.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = backfill_performance()
+
+        # 必須真的更新了 1 筆（舊 buggy 版本會是 0）
+        assert result == 1
+        assert mock_conn.execute.called
+        # 驗證 UPDATE 帶入計算後的 return_t5：T+5=index4=857.0, (857/850-1)*100=0.82
+        params = mock_conn.execute.call_args[0][1]
+        assert params["return_t5"] == 0.82
+        assert params["return_t20"] == round((855 + 19 * 0.5) / 850 * 100 - 100, 2)
+
 
 class TestPerformanceReport:
     """績效追蹤報告"""
