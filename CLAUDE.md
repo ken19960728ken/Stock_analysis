@@ -65,6 +65,12 @@ uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 23
 uv run python scripts/strategy_report.py --strategy "MA 交叉" --all --top 20 --no-html
 uv run python scripts/strategy_report.py --strategy "MA 交叉" --stocks 2330 --param fast_period=10
 
+# === Paper Trading ===
+uv run python main.py --strategy-tournament          # 策略淘汰賽（OOS 驗證篩選）
+uv run python main.py --paper-trading                # Paper Trading（模擬交易 + 風控 + 報告）
+uv run python scripts/strategy_tournament.py --force # 強制重新跑淘汰賽
+uv run python scripts/paper_trader.py --force        # 跳過交易日檢查執行
+
 # === 績效追蹤 ===
 uv run python scripts/performance_tracker.py                  # 回填績效 + 產出追蹤報告
 uv run python scripts/performance_tracker.py --backfill-only  # 僅回填
@@ -186,11 +192,11 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `.streamlit/config.toml` | Streamlit 雲端配置（headless, 0.0.0.0:8501） |
 | `deploy/setup.sh` | GCP 專案初始化（啟用 API + Artifact Registry + Secret Manager） |
 | `deploy/setup-secrets.sh` | 建立 Secret Manager Secrets（從 .env 讀取 4 個敏感值 + 授權 SA） |
-| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report + stock-fundamental 三個 Job（Secret Manager 注入敏感變數） |
+| `deploy/deploy-pipeline.sh` | 建置 + 部署 stock-data + stock-report + stock-fundamental + stock-paper-trading 四個 Job（Secret Manager 注入敏感變數） |
 | `deploy/deploy-analysis.sh` | 建置 + 部署 Analysis Service（Secret Manager 注入敏感變數） |
 | `deploy/pre-deploy-check.sh` | 部署前檢查（Git 乾淨、SemVer 格式、Tag 不重複、測試通過、CHANGELOG 有更新） |
 | `deploy/release.sh` | 一站式發布腳本（pre-check → git tag → push → deploy → 摘要） |
-| `deploy/setup-scheduler.sh` | Cloud Scheduler 三排程（stock-data 18:30 + stock-report 18:40 + stock-fundamental 19:00 季報公布月 UTC+8） |
+| `deploy/setup-scheduler.sh` | Cloud Scheduler 四排程（stock-data 18:30 + stock-report 18:40 + stock-paper-trading 18:50 + stock-fundamental 19:00 季報公布月 UTC+8） |
 | `deploy/部署流程.md` | 完整部署文件（含環境版本 + 版本管控 + 踩坑紀錄） |
 
 ### Dashboard 模組 `dashboard/`
@@ -220,6 +226,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `scrape_sub_industry.py` | 從 HiStock 爬取次產業分類 → `data/sub_industry_mapping.json`（一次性工具，`--diff` 比較差異） |
 | `performance_tracker.py` | 績效追蹤（回填 T+5/T+10/T+20 + 追蹤報告） |
 | `seed_recommendation_data.py` | 建立本地推薦追蹤 SQLite（報告解析 + 模擬資料） |
+| `strategy_tournament.py` | 策略淘汰賽（OOS 驗證 + 訊號衰減 → 篩選進入 Paper Trading 的策略） |
+| `paper_trader.py` | Paper Trading 核心引擎（訊號掃描 + 組合構建 + 模擬交易 + 風控） |
+| `paper_risk_control.py` | Paper Trading 風控模組（部位限制 + 回撤熔斷 + 策略暫停） |
+| `paper_report.py` | Paper Trading 報告（日報 + 週報 + 告警 Email） |
 
 ### Scanner 模組 `scanners/`
 
@@ -258,6 +268,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `industry_classification` | 兩層產業分類（sector + sub_industry） | `(stock_id)` |
 | `recommendation_history` | 選股推薦追蹤（版本指紋 + 績效回填） | `(report_date, stock_id)` |
 | `scanner_run_log` | Scanner 執行日誌（開始/結束時間、成功/失敗數、耗時） | `(run_date, scanner_name, started_at)` |
+| `paper_portfolio` | Paper Trading 持倉快照（每日覆寫） | `(trade_date, stock_id)` |
+| `paper_trades` | Paper Trading 交易記錄（只增不改） | `(trade_date, stock_id, side, shares)` |
+| `paper_daily_pnl` | Paper Trading 每日損益 + 風控狀態 | `(trade_date)` |
+| `strategy_tournament_results` | 策略淘汰賽結果快取 | `(run_date, strategy_name)` |
 
 ### Tests `tests/`
 
@@ -313,6 +327,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_day_trade_sentiment.py` | 當沖情緒反轉策略測試（訊號生成、Z-Score、參數邊界，13 項） |
 | `test_gov_bank_shield.py` | 官股護盤偵測策略測試（訊號生成、力道閾值、持有天數，8 項） |
 | `test_finmind_api_diagnostic.py` | FinMind API 診斷（需 `-m api`） |
+| `test_strategy_tournament.py` | 策略淘汰賽測試（OOS 評估、篩選邏輯、報告生成，13 項） |
+| `test_paper_risk_control.py` | Paper Trading 風控測試（6 項約束、回撤熔斷、策略暫停，23 項） |
+| `test_paper_trader.py` | Paper Trading 引擎測試（訂單生成、模擬執行、滑價計算，15 項） |
+| `test_paper_report.py` | Paper Trading 報告測試（格式化、週末判斷、告警發送，13 項） |
 
 ### Configuration
 
@@ -336,7 +354,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- **Cloud Run 三 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送；`stock-fundamental`（`--daily-fundamental`，19:00 UTC+8，僅 2/3/5/8/11 月）負責季報增量更新，以 DB 差集策略逐股抓取缺漏季報（timeout 7200s）。前兩者每日排程，季報更新僅在公布月排程。`--daily` 為向後相容旗標，依序執行資料抓取 + 選股報告。交易日判斷使用 TWSE 官方開休市行事曆 API。
+- **Cloud Run 四 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送；`stock-paper-trading`（`--paper-trading`，18:50 UTC+8）負責 Paper Trading 模擬交易 + 風控 + 報告；`stock-fundamental`（`--daily-fundamental`，19:00 UTC+8，僅 2/3/5/8/11 月）負責季報增量更新，以 DB 差集策略逐股抓取缺漏季報（timeout 7200s）。前三者每日排程，季報更新僅在公布月排程。`--daily` 為向後相容旗標，依序執行資料抓取 + 選股報告。交易日判斷使用 TWSE 官方開休市行事曆 API。
 - 每日排程由 Cloud Scheduler 觸發（18:30 / 18:40 UTC+8），`--daily-data` 和 `--daily-report` 各自執行完即退出。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 - `--pick-stocks` 單獨執行只產報告不寄信；`--daily-report` 會自動寄信。手動補產報告後可用 `--daily-report` 或另外呼叫 `send_report_email()` 寄送。
 

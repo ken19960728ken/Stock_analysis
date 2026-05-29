@@ -421,7 +421,30 @@ def main():
         metavar="KEY=VALUE",
         help="策略參數覆蓋（格式: key=value）",
     )
+    # --- Paper Trading ---
+    parser.add_argument(
+        "--paper-trading",
+        action="store_true",
+        help="執行 Paper Trading（模擬交易 + 風控 + 報告）",
+    )
+    parser.add_argument(
+        "--strategy-tournament",
+        action="store_true",
+        help="執行策略淘汰賽（OOS 驗證篩選）",
+    )
     args = parser.parse_args()
+
+    # --strategy-tournament：策略淘汰賽
+    if args.strategy_tournament:
+        from scripts.strategy_tournament import run_tournament
+        run_tournament(force=True)
+        return
+
+    # --paper-trading：模擬交易
+    if args.paper_trading:
+        from scripts.paper_trader import run_paper_trading
+        run_paper_trading()
+        return
 
     # --pick-stocks：每日選股報告
     if args.pick_stocks:

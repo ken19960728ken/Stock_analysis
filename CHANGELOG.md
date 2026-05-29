@@ -5,6 +5,14 @@
 ## [Unreleased]
 
 ### Added
+- **Paper Trading 系統**：從回測到實盤的橋梁
+  - `scripts/strategy_tournament.py` — 策略淘汰賽（26 策略 OOS 驗證 + 訊號衰減分析，自動篩選進入 Paper Trading 的策略）
+  - `scripts/paper_trader.py` — Paper Trading 核心引擎（每日訊號掃描 + 組合構建 + 模擬交易，含動態滑價 + 流動性限制）
+  - `scripts/paper_risk_control.py` — 風控模組（單檔 20% / 產業 40% / 最多 10 檔 / VaR 2% / 回撤熔斷 -10%/-15%/-20% / 策略連虧暫停）
+  - `scripts/paper_report.py` — 報告模組（日報 + 週報 + 回撤告警 Email）
+  - 4 個新 DB 表：`paper_portfolio`、`paper_trades`、`paper_daily_pnl`、`strategy_tournament_results`
+  - Cloud Run 新 Job `stock-paper-trading`（18:50 UTC+8）
+  - CLI：`--paper-trading`、`--strategy-tournament`
 - **當沖情緒反轉策略**（`DayTradeSentimentStrategy`）：當沖比例 Z-Score 作為散戶情緒反向指標，策略總數 22→23
 - **權證過濾**：`save_to_db` 自動過濾 `stock_id` >= 6 碼的權證資料
 

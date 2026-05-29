@@ -28,6 +28,10 @@ VALID_TABLES = frozenset({
     "securities_trader_info",   # 券商資訊（靜態）
     "chip_broker",              # 券商分點買賣（Sponsor）
     "chip_gov_bank",            # 官股行庫買賣（Sponsor）
+    "paper_portfolio",          # Paper Trading 持倉
+    "paper_trades",             # Paper Trading 交易記錄
+    "paper_daily_pnl",          # Paper Trading 每日損益
+    "strategy_tournament_results",  # 策略淘汰賽結果
 })
 
 
@@ -172,6 +176,8 @@ _NO_WARRANT_FILTER_TABLES = frozenset({
     "twstock_code", "industry_mapping", "industry_classification",
     "recommendation_history", "scanner_run_log",
     "total_return_index", "stock_delisting", "securities_trader_info",
+    "paper_portfolio", "paper_trades", "paper_daily_pnl",
+    "strategy_tournament_results",
 })
 
 
@@ -193,10 +199,46 @@ def _filter_warrants(df, table_name):
     return df
 
 
+_table_columns_cache: dict[str, list[str]] = {}
+
+
+def _get_table_columns(table_name: str) -> list[str] | None:
+    """查詢 DB 表的實際欄位名稱（快取結果）。"""
+    if table_name in _table_columns_cache:
+        return _table_columns_cache[table_name]
+    try:
+        sql = text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :tbl"
+        )
+        with get_engine().connect() as conn:
+            rows = conn.execute(sql, {"tbl": table_name}).fetchall()
+        if rows:
+            cols = [r[0] for r in rows]
+            _table_columns_cache[table_name] = cols
+            return cols
+    except Exception as e:
+        logger.debug(f"查詢 {table_name} 欄位失敗: {e}")
+    return None
+
+
+def _filter_unknown_columns(df, table_name):
+    """移除 DataFrame 中 DB 表不存在的欄位，避免 API schema 變動導致寫入失敗。"""
+    db_cols = _get_table_columns(table_name)
+    if db_cols is None:
+        return df
+    extra = [c for c in df.columns if c not in db_cols]
+    if extra:
+        logger.info(f"[{table_name}] 移除 API 多餘欄位: {extra}")
+        df = df.drop(columns=extra)
+    return df
+
+
 def save_to_db(df, table_name, chunksize=500):
     """封裝 to_sql，統一寫入邏輯（自動忽略重複資料）
 
     - 自動過濾權證資料（stock_id >= 6 碼），避免寫入不必要的資料。
+    - 自動移除 DB 表不存在的欄位（防止 API schema 變動導致寫入失敗）。
     - 自動將 dict/list 欄位序列化為 JSON 字串（防止 psycopg2 JSONB 寫入錯誤）
     - 遇到連線斷線時，重置連線池並重試一次。
     """
@@ -204,6 +246,9 @@ def save_to_db(df, table_name, chunksize=500):
         return False
     _validate_table_name(table_name)
     df = _filter_warrants(df, table_name)
+    if df.empty:
+        return False
+    df = _filter_unknown_columns(df, table_name)
     if df.empty:
         return False
     df = _auto_serialize_json_columns(df)
