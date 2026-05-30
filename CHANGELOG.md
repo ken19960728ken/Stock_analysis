@@ -16,7 +16,13 @@
 - **當沖情緒反轉策略**（`DayTradeSentimentStrategy`）：當沖比例 Z-Score 作為散戶情緒反向指標，策略總數 22→23
 - **權證過濾**：`save_to_db` 自動過濾 `stock_id` >= 6 碼的權證資料
 
+### Fixed
+- **enrich dtype 核心 bug（嚴重）**：`daily_stock_picker` / `paper_trader` / `strategy_tournament` 的補充資料合併中，快取的籌碼/估值/營收 `date` 為 object 字串、價格 `date` 為 datetime64，`pd.merge_asof` 因 dtype 不一致拋 `MergeError` 被靜默吞掉，導致所有依賴非價格資料的策略（價值投資、法人跟單、多因子綜合、多策略動態組合、營收動能、次產業輪動）長期恆 0 分。修正後選股實際變回多因子（實測單日 top 20 換血 75%）
+- **績效回填 NaN 判斷**：`performance_tracker` 用 `is None` 判斷 pandas float64 NaN 失效（前次提交）
+- **靜默例外**：3 處策略評分 except 由 `debug`/`pass` 提升為 `warning`，避免再次掩蓋策略失效
+
 ### Changed
+- **選股池排除 ETF**：`daily_stock_picker` / `paper_trader` 改用 `商品類型 = '股票'`，ETF 不再混入基本面多因子選股（ETF 另以專屬策略處理）
 - **FOCUS_METRICS 修正**：5 個 FinMind type 名稱更正（NetIncome→IncomeAfterTaxes, EarningsPerShare→EPS, TotalLiabilities→Liabilities, TotalEquity→Equity, CapitalExpenditure→PropertyAndPlantAndEquipment）
 - **FCF 策略升級**：Level 2（OCF 趨勢分析）+ Level 3（盈餘品質檢驗）
 

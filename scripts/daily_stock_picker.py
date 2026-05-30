@@ -302,6 +302,12 @@ def _enrich_from_cache(df: pd.DataFrame, stock_id: str, strategy_name: str,
         if extra.empty:
             continue
 
+        # 快取的補充資料 date 為 object 字串，price df 已是 datetime64，
+        # merge_asof 要求兩側 dtype 一致，否則拋 MergeError（會被靜默吞掉）。
+        if "date" in extra.columns and not pd.api.types.is_datetime64_any_dtype(extra["date"]):
+            extra = extra.copy()
+            extra["date"] = pd.to_datetime(extra["date"])
+
         if table == "chip_institutional":
             extra = extra.copy()
             buy_cols = [c for c in extra.columns if c.endswith("_buy")]
@@ -376,7 +382,7 @@ def _score_stock_cached(stock_id: str, strategies: dict, signal_days: int,
                 "signal_date": signal_date,
             }
         except Exception as e:
-            logger.debug(f"  {stock_id}/{strategy_name} 評分失敗: {e}")
+            logger.warning(f"  {stock_id}/{strategy_name} 評分失敗: {type(e).__name__}: {e}")
             votes[strategy_name] = {
                 "latest_signal": 0,
                 "recent_score": 0.0,
@@ -460,10 +466,13 @@ def load_daily_price(engine, stock_id: str, start_date: str,
 
 
 def load_all_stock_ids(engine) -> list[str]:
-    """從 twstock_code 取得一般股票代碼（排除權證、ETN 等）"""
+    """從 twstock_code 取得一般個股代碼（排除權證、ETN、ETF）。
+
+    ETF 不適用基本面/籌碼多因子評分，另以專屬策略處理。
+    """
     query = text(
         'SELECT DISTINCT "商品代號" FROM twstock_code '
-        "WHERE \"商品類型\" IN ('股票', 'ETF') "
+        "WHERE \"商品類型\" = '股票' "
         'ORDER BY "商品代號"'
     )
     try:
@@ -671,7 +680,7 @@ def score_stock(engine, stock_id: str, strategies: dict,
                 "signal_date": signal_date,
             }
         except Exception as e:
-            logger.debug(f"  {stock_id}/{strategy_name} 評分失敗: {e}")
+            logger.warning(f"  {stock_id}/{strategy_name} 評分失敗: {type(e).__name__}: {e}")
             votes[strategy_name] = {
                 "latest_signal": 0,
                 "recent_score": 0.0,

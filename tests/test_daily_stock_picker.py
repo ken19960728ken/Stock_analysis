@@ -343,6 +343,44 @@ class TestBuildStockCache:
         assert _build_stock_cache(None) == {}
 
 
+class TestEnrichFromCache:
+    """enrich 補充資料合併（dtype regression）"""
+
+    def test_object_date_extra_merges_without_error(self):
+        """Regression: 快取補充資料 date 為 object 字串、price date 為 datetime64，
+        merge_asof 不應拋 MergeError，且補充欄位要正確填入（非全 NaN）。
+
+        舊版只轉 price date、不轉 extra date，merge_asof 拋
+        `MergeError: Incompatible merge dtype`，被上層 except 靜默吞掉，
+        導致依賴非價格資料的策略恆 0 分。
+        """
+        price = pd.DataFrame({
+            "stock_id": ["2330"] * 8,
+            "date": pd.date_range("2026-04-13", periods=8, freq="B"),
+            "close": [900 + i for i in range(8)],
+        })
+        # 模擬 _build_stock_cache 的真實輸出：date 為 object 字串
+        chip = pd.DataFrame({
+            "stock_id": ["2330"] * 5,
+            "date": ["2026-04-13", "2026-04-14", "2026-04-15",
+                     "2026-04-16", "2026-04-17"],
+            "foreign_investors_buy": [100, 200, 150, 300, 250],
+            "foreign_investors_sell": [50, 80, 90, 100, 70],
+        })
+        assert chip["date"].dtype == object  # 確認重現真實情境
+        chip_cache = {"2330": chip}
+
+        result = _enrich_from_cache(
+            price.copy(), "2330", "法人跟單",
+            chip_cache, {}, {}, {},
+        )
+
+        # merge 成功，補充欄位存在且非全 NaN（舊版會拋 MergeError）
+        assert "institutional_net_buy" in result.columns
+        assert result["institutional_net_buy"].notna().any()
+        assert len(result) == len(price)
+
+
 # ============================================================================
 # TestScoreStockCached（快取評分）
 # ============================================================================

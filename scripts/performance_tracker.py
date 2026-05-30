@@ -99,7 +99,7 @@ def backfill_performance() -> int:
         entry_price = row["entry_price"]
         rec_id = row["id"]
 
-        if entry_price is None or entry_price <= 0:
+        if pd.isna(entry_price) or entry_price <= 0:
             continue
 
         # 取推薦日之後的交易日價格
@@ -117,17 +117,17 @@ def backfill_performance() -> int:
 
         # 計算報酬率（只更新目前為 NULL 的欄位）
         updates = {}
-        if row["return_t5"] is None and td_prices["price_t5"] is not None:
+        if pd.isna(row["return_t5"]) and td_prices["price_t5"] is not None:
             updates["price_t5"] = td_prices["price_t5"]
             updates["return_t5"] = round(
                 (td_prices["price_t5"] / entry_price - 1) * 100, 2
             )
-        if row["return_t10"] is None and td_prices["price_t10"] is not None:
+        if pd.isna(row["return_t10"]) and td_prices["price_t10"] is not None:
             updates["price_t10"] = td_prices["price_t10"]
             updates["return_t10"] = round(
                 (td_prices["price_t10"] / entry_price - 1) * 100, 2
             )
-        if row["return_t20"] is None and td_prices["price_t20"] is not None:
+        if pd.isna(row["return_t20"]) and td_prices["price_t20"] is not None:
             updates["price_t20"] = td_prices["price_t20"]
             updates["return_t20"] = round(
                 (td_prices["price_t20"] / entry_price - 1) * 100, 2
