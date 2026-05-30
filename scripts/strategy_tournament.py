@@ -224,6 +224,12 @@ def _enrich_for_strategy(
         if extra.empty:
             continue
 
+        # 快取的補充資料 date 為 object 字串，price df 已是 datetime64，
+        # merge_asof 要求兩側 dtype 一致，否則拋 MergeError（會被靜默吞掉）。
+        if "date" in extra.columns and not pd.api.types.is_datetime64_any_dtype(extra["date"]):
+            extra = extra.copy()
+            extra["date"] = pd.to_datetime(extra["date"])
+
         if table == "chip_institutional":
             extra = extra.copy()
             buy_cols = [c for c in extra.columns if c.endswith("_buy")]
@@ -308,7 +314,7 @@ def _evaluate_strategy(
 
             evaluated_count += 1
         except Exception as e:
-            logger.debug(f"  {strategy_name}/{stock_id} 評估失敗: {e}")
+            logger.warning(f"  {strategy_name}/{stock_id} 評估失敗: {type(e).__name__}: {e}")
 
     if not oos_results:
         return {

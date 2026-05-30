@@ -145,9 +145,9 @@ def _load_all_tables(
 
 
 def _load_stock_ids() -> list[str]:
-    """從 twstock_code 載入所有股票代碼"""
+    """從 twstock_code 載入個股代碼（排除 ETF/權證，與選股器一致用商品類型）"""
     sql = """SELECT "商品代號" AS stock_id FROM twstock_code
-             WHERE "CFICode" = 'ESVUFR' OR "CFICode" LIKE 'CEE%%'"""
+             WHERE "商品類型" = '股票'"""
     df = safe_read_sql(sql)
     return df["stock_id"].tolist() if not df.empty else []
 
@@ -185,6 +185,12 @@ def _enrich_for_strategy(
 
         if extra.empty:
             continue
+
+        # 快取的補充資料 date 為 object 字串，price df 已是 datetime64，
+        # merge_asof 要求兩側 dtype 一致，否則拋 MergeError（會被靜默吞掉）。
+        if "date" in extra.columns and not pd.api.types.is_datetime64_any_dtype(extra["date"]):
+            extra = extra.copy()
+            extra["date"] = pd.to_datetime(extra["date"])
 
         if table == "chip_institutional":
             extra = extra.copy()
@@ -268,8 +274,8 @@ def _scan_signals(
                     # 取最後一天的訊號
                     last_signal = int(sig_df["signal"].iloc[-1])
                     stock_signals[strategy_name] = last_signal
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"  {stock_id}/{strategy_name} 訊號產生失敗: {type(e).__name__}: {e}")
 
         if stock_signals:
             results[stock_id] = stock_signals

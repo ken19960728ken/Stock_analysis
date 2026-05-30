@@ -12,9 +12,42 @@ from scripts.paper_trader import (
     SELL_TAX_RATE,
     _calc_dynamic_slippage,
     _construct_orders,
+    _enrich_for_strategy,
     _execute_orders,
     _scan_signals,
 )
+
+
+class TestEnrichForStrategy:
+    """enrich 補充資料合併（dtype regression）"""
+
+    def test_object_date_extra_merges_without_error(self):
+        """Regression: 補充資料 date 為 object 字串、price date 為 datetime64，
+        merge_asof 不應拋 MergeError，補充欄位要正確填入（非全 NaN）。
+        """
+        price = pd.DataFrame({
+            "stock_id": ["2330"] * 8,
+            "date": pd.date_range("2026-04-13", periods=8, freq="B"),
+            "close": [900 + i for i in range(8)],
+        })
+        chip = pd.DataFrame({
+            "stock_id": ["2330"] * 5,
+            "date": ["2026-04-13", "2026-04-14", "2026-04-15",
+                     "2026-04-16", "2026-04-17"],
+            "foreign_investors_buy": [100, 200, 150, 300, 250],
+            "foreign_investors_sell": [50, 80, 90, 100, 70],
+        })
+        assert chip["date"].dtype == object
+        chip_cache = {"2330": chip}
+
+        result = _enrich_for_strategy(
+            price.copy(), "2330", "法人跟單",
+            chip_cache, {}, {}, None, None,
+        )
+
+        assert "institutional_net_buy" in result.columns
+        assert result["institutional_net_buy"].notna().any()
+        assert len(result) == len(price)
 
 
 # ===================================================================
