@@ -182,6 +182,22 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | 散戶vs主力 | `RetailVsInstitutionalStrategy` | 籌碼面（散戶當沖 vs 主力籌碼背離） |
 | 官股護盤 | `GovBankShieldStrategy` | 籌碼面（官股買超力道異常放大 + 大盤下跌） |
 
+#### 選股器策略選用（每日選股器只用 11 / 26）
+
+`scripts/daily_stock_picker.py` 的 `STRATEGY_WEIGHTS` **只採用 26 個策略中的 11 個**。選用標準：**全市場回測掃描後，正報酬或參數優化後達標**的策略才納入，權重依回測表現設定（RSI 反轉最高 1.0，其餘 0.5~0.8）。
+
+**採用的 11 個**：RSI 反轉(1.0)、價值投資(0.8)、機器學習選股(0.7)、量價動能(0.7)、多因子綜合(0.6)、法人跟單(0.6)、營收動能(0.6)、趨勢過濾MA(0.5)、多策略動態組合(0.5)、波動率壓縮突破(0.5)、次產業輪動(0.5)。
+
+**未採用的 15 個及原因**：
+
+| 類別 | 策略 | 未採用原因 |
+|---|---|---|
+| 純技術擇時 | MA 交叉、MACD 訊號、Bollinger 突破、Parabolic SAR、Heikin-Ashi、Dual Thrust | 判斷單檔進出場時機，不適合做跨股票橫斷面排名選股，且回測未達門檻 |
+| 基本面/籌碼 | 財報三率、自由現金流、融資融券訊號、股權集中度、事件驅動 | 回測未達門檻，或訊號已被「多因子綜合」涵蓋 |
+| 籌碼進階 | 當沖情緒反轉、外資連續買超、散戶vs主力、官股護盤 | **資料層限制**：需 `day_trading`/`chip_broker`/`chip_gov_bank` 三表，但選股器批量快取 `_load_all_tables` 未載入，非回測淘汰 |
+
+> 歷史註記：基本面/籌碼策略（價值投資、法人跟單、多因子綜合、多策略動態組合、營收動能、次產業輪動）的權重雖早已設定，但因 enrich dtype bug（merge_asof 靜默失敗）長期恆 0 分，實際生效是從 2026-05 修復後才開始。修復前選股實質上只有「量價動能 + 機器學習選股」兩個技術/ML 策略在運作。
+
 ### 部署 `deploy/`
 
 | File | Description |
@@ -218,7 +234,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 |---|---|
 | `value_investing_report.py` | 價值投資全市場回測報告（專用） |
 | `strategy_report.py` | 通用策略掃描回測報告（23 策略 + 0050 基準比較） |
-| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期） |
+| `daily_stock_picker.py` | 每日選股報告（多策略投票 + 流動性過濾，支援 `--date` 指定日期）。**選股器只採用 26 策略中經回測篩選的 11 個**（`STRATEGY_WEIGHTS`），詳見下方「選股器策略選用」 |
 | `db_add_constraints.py` | DB Unique Constraint 冪等腳本（DB 重建後執行） |
 | `db_integrity_check.py` | DB 完整性掃描（交易日清單、每日記錄數、重複偵測、跨表一致性） |
 | `backfill_missing_data.py` | 一次性資料補抓（stock_per/market_value 批量 + DailyUpdater 補缺漏） |
