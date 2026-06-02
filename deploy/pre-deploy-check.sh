@@ -10,9 +10,10 @@ PASS=0
 FAIL=0
 WARN=0
 
-check_pass() { echo "  ✓ $1"; ((PASS++)); }
-check_fail() { echo "  ✗ $1"; ((FAIL++)); }
-check_warn() { echo "  ⚠ $1"; ((WARN++)); }
+# 用賦值式遞增：((PASS++)) 在 PASS=0 時回傳舊值 0（exit 1），於 set -e 下會誤殺腳本
+check_pass() { echo "  ✓ $1"; PASS=$((PASS + 1)); }
+check_fail() { echo "  ✗ $1"; FAIL=$((FAIL + 1)); }
+check_warn() { echo "  ⚠ $1"; WARN=$((WARN + 1)); }
 
 echo "=== 部署前檢查 ==="
 echo ""
@@ -66,7 +67,7 @@ fi
 # --- 5. 測試通過 ---
 echo ""
 echo "[測試]"
-if uv run pytest tests/ -q --tb=no 2>/dev/null; then
+if uv run python -m pytest tests/ -q --tb=no 2>/dev/null; then
     check_pass "所有測試通過"
 else
     check_fail "測試未通過"
