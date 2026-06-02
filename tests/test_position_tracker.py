@@ -190,6 +190,30 @@ class TestRunTracking:
         assert summary["opened"] == 0  # 2330/2317 皆已存在 → 不重開
 
 
+def test_format_section_with_opens_and_holdings():
+    summary = {
+        "report_date": "2026-06-29", "opened": 1, "closed": 1, "open_count": 10,
+        "opens": [{
+            "stock_id": "2454", "stock_name": "聯發科", "entry_price": 1300.0,
+            "total_score": 4.2, "agree_count": 3,
+        }],
+        "exits": [{
+            "stock_id": "2330", "stock_name": "台積電", "entry_date": "2026-06-01",
+            "exit_date": "2026-06-29", "exit_price": 1085.0, "exit_reason": "time_stop",
+            "realized_pnl_pct": 6.42, "holding_days": 20,
+        }],
+        "holdings": [{
+            "stock_id": "2317", "stock_name": "鴻海", "entry_date": "2026-06-10",
+            "entry_price": 200.0, "current_price": 210.0,
+            "unrealized_pnl_pct": 5.0, "holding_days": 12,
+        }],
+    }
+    out = pt.format_tracking_section(summary)
+    assert "今日新進場" in out and "2454" in out
+    assert "今日出場訊號" in out and "time_stop" in out
+    assert "目前持倉" in out and "鴻海" in out
+
+
 def test_format_section_with_exit():
     summary = {
         "report_date": "2026-05-28", "opened": 2, "closed": 1, "open_count": 5,

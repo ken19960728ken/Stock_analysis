@@ -306,6 +306,20 @@ def _open_new_positions(
 # 主流程
 # ---------------------------------------------------------------------------
 
+def _holding_row(pos: pd.Series, current, holding_days, unrealized) -> dict:
+    """組裝持倉列（無價格資料時以進場價代現價）。"""
+    ep = float(pos["entry_price"])
+    return {
+        "stock_id": str(pos["stock_id"]),
+        "stock_name": pos.get("stock_name"),
+        "entry_date": pd.Timestamp(pos["entry_date"]).strftime("%Y-%m-%d"),
+        "entry_price": ep,
+        "current_price": float(current) if current is not None else ep,
+        "unrealized_pnl_pct": float(unrealized) if unrealized is not None else 0.0,
+        "holding_days": int(holding_days) if holding_days is not None else 0,
+    }
+
+
 def run_position_tracking(
     target_date: str | None = None,
     exit_rule: ExitRule | None = None,
@@ -326,6 +340,7 @@ def run_position_tracking(
     # 1) 追蹤 + 出場：更新既有 open 部位（單一連線批次 UPDATE）
     open_df = _load_open_positions()
     exits: list[dict] = []
+    holdings: list[dict] = []
     still_open_ids: set = set()
     pending_updates: list[tuple] = []
     for _, pos in open_df.iterrows():
@@ -333,6 +348,7 @@ def run_position_tracking(
         result = _evaluate_position(pos, rule, neg)
         if result is None:
             still_open_ids.add(str(pos["stock_id"]))
+            holdings.append(_holding_row(pos, None, None, None))
             continue
         pending_updates.append((pos, result))
         if result["status"] == "closed":
@@ -348,6 +364,10 @@ def run_position_tracking(
             })
         else:
             still_open_ids.add(str(pos["stock_id"]))
+            holdings.append(_holding_row(
+                pos, result["current_price"], result["holding_days"],
+                result["unrealized_pnl_pct"],
+            ))
 
     if pending_updates:
         with engine.connect() as conn:
@@ -360,11 +380,34 @@ def run_position_tracking(
     picks = _select_to_buy(_load_picks(report_date), sel)
     new_df = _open_new_positions(report_date, picks, exclude, rule, sel)
 
+    opens: list[dict] = []
+    if not new_df.empty:
+        for _, r in new_df.iterrows():
+            ep = float(r["entry_price"])
+            opens.append({
+                "stock_id": str(r["stock_id"]),
+                "stock_name": r.get("stock_name"),
+                "entry_price": ep,
+                "total_score": r.get("total_score"),
+                "agree_count": r.get("agree_count"),
+            })
+            holdings.append({
+                "stock_id": str(r["stock_id"]),
+                "stock_name": r.get("stock_name"),
+                "entry_date": report_date,
+                "entry_price": ep,
+                "current_price": ep,
+                "unrealized_pnl_pct": 0.0,
+                "holding_days": 0,
+            })
+
     summary = {
         "report_date": report_date,
         "opened": len(new_df),
         "closed": len(exits),
         "exits": exits,
+        "opens": opens,
+        "holdings": holdings,
         "open_count": len(still_open_ids) + len(new_df),
     }
     logger.info(
@@ -375,7 +418,7 @@ def run_position_tracking(
 
 
 def format_tracking_section(summary: dict) -> str:
-    """產出可併入報告/Email 的 Markdown 持倉與出場訊號區塊。"""
+    """產出可併入報告/Email 的 Markdown 區塊：今日進場 + 今日出場 + 目前持倉。"""
     if not summary or not summary.get("report_date"):
         return ""
     lines = ["## 持倉追蹤與出場訊號\n"]
@@ -383,6 +426,20 @@ def format_tracking_section(summary: dict) -> str:
         f"> {summary['report_date']}｜開倉 {summary['opened']}、"
         f"平倉 {summary['closed']}、持有中 {summary['open_count']}\n"
     )
+
+    opens = summary.get("opens", [])
+    if opens:
+        lines.append("### 今日新進場\n")
+        lines.append("| 股票 | 進場價 | 加權分數 | 同意策略數 |")
+        lines.append("|------|-------|---------|----------|")
+        for o in opens:
+            name = f"{o['stock_id']} {o.get('stock_name') or ''}".strip()
+            score = o.get("total_score")
+            score_s = f"{float(score):.2f}" if score is not None and pd.notna(score) else "—"
+            agree = o.get("agree_count")
+            agree_s = str(int(agree)) if agree is not None and pd.notna(agree) else "—"
+            lines.append(f"| {name} | {o['entry_price']:.2f} | {score_s} | {agree_s} |")
+
     exits = summary.get("exits", [])
     if exits:
         lines.append("### 今日出場訊號\n")
@@ -395,8 +452,22 @@ def format_tracking_section(summary: dict) -> str:
                 f"{e['exit_price']:.2f} | {e['realized_pnl_pct']:+.2f}% | "
                 f"{e['holding_days']} | {e['exit_reason']} |"
             )
-    else:
-        lines.append("今日無出場訊號。\n")
+
+    holdings = summary.get("holdings", [])
+    if holdings:
+        lines.append("### 目前持倉\n")
+        lines.append("| 股票 | 進場日 | 進場價 | 現價 | 未實現 | 持有(交易日) |")
+        lines.append("|------|-------|-------|------|-------|------------|")
+        for h in sorted(holdings, key=lambda x: x.get("unrealized_pnl_pct", 0), reverse=True):
+            name = f"{h['stock_id']} {h.get('stock_name') or ''}".strip()
+            lines.append(
+                f"| {name} | {h['entry_date']} | {h['entry_price']:.2f} | "
+                f"{h['current_price']:.2f} | {h['unrealized_pnl_pct']:+.2f}% | "
+                f"{h['holding_days']} |"
+            )
+
+    if not opens and not exits and not holdings:
+        lines.append("今日無持倉異動。\n")
     return "\n".join(lines) + "\n"
 
 
