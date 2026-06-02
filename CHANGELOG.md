@@ -4,7 +4,18 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-03
+
 ### Added
+- **持倉追蹤 + 出場規則系統**：把無狀態的 Top 20 推薦變成可執行的持倉組合（進場挑選 → 追蹤 → 出場訊號）
+  - `analysis/utils/exit_rules.py` — 可插拔出場規則（`TimeStopExit` 時間停損 / `PriceStopExit` 停利停損/ATR 移動停損 / `CompositeExit` 先觸發者先出 / `StrategyVoteExit` 出場投票），純量介面、回測與線上共用同一份規則
+  - `analysis/utils/multi_stock_backtester.py` — 新增可插拔 `exit_rule` 參數（預設 None 維持原行為）+ peak/交易日 holding 追蹤；修正資料缺漏日部位被以 0 估值造成權益曲線假性崩跌的 bug + O(1) 日期查詢優化
+  - `scripts/exit_rule_backtest.py` — 出場規則全市場回測掃描：以選股器 11 策略加權投票時間序列化當進場代理，掃「選法（top_k/加權/min_agree）× 出場規則（B/C/B+C/D）」網格，對比 0050 → `reports/exit_rule_sweep_*.csv/html`
+  - `scripts/position_tracker.py` — 線上持倉追蹤：從當日 Top 20 套 SelectionConfig 挑買入、沿進場後價格路徑重播 `ExitRule` 產生出場訊號，寫入 `tracked_positions`（open/closed 生命週期）
+  - `analysis/pages/14_持倉追蹤.py` — 持倉追蹤儀表板（持有中未實現損益 + 已平倉出場原因/已實現損益）
+  - 新 DB 表 `tracked_positions`（唯一鍵 `(report_date, stock_id)`）；`recommendation_db` 新增 `load_tracked_positions` / `load_open_positions`
+  - CLI：`--track-positions`；整合進 `stock-report` 每日 Job（選股後同進程追蹤）
+  - **回測結論（200 檔×3 年，0050 年化 +48.47%）**：時間停損在多頭環境主導；冠軍 = `min_agree=3 / top_k=10 / 等權 + TimeStopExit(20 交易日)`（Sharpe 2.10、勝 0050 +35.8%、最大回撤 -28.8%、勝率 50.4%），設為 `DEFAULT_SELECTION` / `DEFAULT_EXIT_RULE`
 - **Paper Trading 系統**：從回測到實盤的橋梁
   - `scripts/strategy_tournament.py` — 策略淘汰賽（26 策略 OOS 驗證 + 訊號衰減分析，自動篩選進入 Paper Trading 的策略）
   - `scripts/paper_trader.py` — Paper Trading 核心引擎（每日訊號掃描 + 組合構建 + 模擬交易，含動態滑價 + 流動性限制）

@@ -17,7 +17,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DATA_SOURCE = os.getenv("RECOMMENDATION_DB_SOURCE", "sqlite")
 _SQLITE_PATH = PROJECT_ROOT / "data" / "recommendation_local.db"
 
-_JSONB_COLUMNS = ["strategy_votes", "strategy_hashes", "strategy_weights", "picker_config"]
+_JSONB_COLUMNS = [
+    "strategy_votes", "strategy_hashes", "strategy_weights", "picker_config",
+    "exit_rule_config",  # tracked_positions
+]
 
 
 def _normalize_jsonb(df: pd.DataFrame) -> pd.DataFrame:
@@ -119,6 +122,21 @@ def load_strategy_breakdown() -> pd.DataFrame:
         rows.append({"strategy": name, "count": count, "win_rate_t5": win_rate, "avg_return_t5": avg_ret})
 
     return pd.DataFrame(rows)
+
+
+def load_tracked_positions() -> pd.DataFrame:
+    """全量持倉追蹤記錄（open + closed）"""
+    return _read_sql(
+        "SELECT * FROM tracked_positions ORDER BY report_date DESC, stock_id"
+    )
+
+
+def load_open_positions() -> pd.DataFrame:
+    """目前持有中的部位"""
+    return _read_sql(
+        "SELECT * FROM tracked_positions WHERE status = 'open' "
+        "ORDER BY report_date DESC, stock_id"
+    )
 
 
 def load_version_timeline() -> pd.DataFrame:

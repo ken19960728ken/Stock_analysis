@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from analysis.strategies.base import Strategy
+from analysis.utils.exit_rules import ExitRule
+from analysis.utils.indicators import add_atr
 from core.constants import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
 
 _EPS = 1e-12
@@ -64,6 +66,7 @@ class MultiStockBacktester:
         max_participation: float = 1.0,
         min_avg_volume: int = 0,
         rebalance_freq: int = 0,         # 0 = 只在訊號變化時交易
+        exit_rule: ExitRule | None = None,
     ):
         self.strategy = strategy
         self.initial_capital = capital
@@ -77,6 +80,8 @@ class MultiStockBacktester:
         self.max_participation = max_participation
         self.min_avg_volume = min_avg_volume
         self.rebalance_freq = rebalance_freq
+        # 可插拔出場規則；None = 維持原行為（signal==-1 出場）
+        self.exit_rule = exit_rule
 
     def run(self, stock_data: dict[str, pd.DataFrame]) -> MultiStockResult:
         """
@@ -94,6 +99,8 @@ class MultiStockBacktester:
 
         # Step 1: 對每支股票 generate_signals
         signals = {}
+        # date -> row(dict) 預索引，避免逐日逐股 O(N) 布林過濾（掃描大量組合時的瓶頸）
+        row_by_date: dict[str, dict] = {}
         for stock_id, df in stock_data.items():
             if df.empty or len(df) < 2:
                 continue
@@ -102,6 +109,16 @@ class MultiStockBacktester:
                 continue
             # Look-Ahead Bias 修正
             sig_df["signal"] = sig_df["signal"].shift(1).fillna(0).astype(int)
+            # 出場投票數同步 shift（與 signal 保持同一資訊時點）
+            if "_neg_votes" in sig_df.columns:
+                sig_df["_neg_votes"] = (
+                    sig_df["_neg_votes"].shift(1).fillna(0).astype(int)
+                )
+            # 移動停損需要 ATR；僅在有出場規則時計算
+            if self.exit_rule is not None and {
+                "high", "low", "close"
+            }.issubset(sig_df.columns):
+                sig_df = add_atr(sig_df)
             # 預計算 20 日均量
             if "volume" in sig_df.columns:
                 sig_df["_avg_vol_20"] = (
@@ -110,6 +127,13 @@ class MultiStockBacktester:
             else:
                 sig_df["_avg_vol_20"] = 0
             signals[stock_id] = sig_df
+            # keep="first" 對齊舊版 df[df["date"]==date].iloc[0]（首筆）語意，
+            # 確保 exit_rule=None 時與優化前逐日布林過濾的行為完全一致。
+            row_by_date[stock_id] = (
+                sig_df.drop_duplicates(subset="date", keep="first")
+                .set_index("date")
+                .to_dict("index")
+            )
 
         if not signals:
             return MultiStockResult()
@@ -127,25 +151,51 @@ class MultiStockBacktester:
         trades: list[dict] = []
         equity_history: list[dict] = []
         position_count_history: list[int] = []
+        last_close: dict[str, float] = {}  # 最後已知收盤價（資料缺漏日的部位估值用）
 
-        for date in all_dates:
-            # 收集當日所有股票的訊號和價格
+        for idx, date in enumerate(all_dates):
+            # 收集當日所有股票的訊號和價格（O(1) 字典查詢）
             daily_info: dict = {}
-            for stock_id, df in signals.items():
-                day_row = df[df["date"] == date]
-                if day_row.empty:
-                    continue
-                row = day_row.iloc[0]
-                daily_info[stock_id] = row
+            for stock_id, rbd in row_by_date.items():
+                row = rbd.get(date)
+                if row is not None:
+                    daily_info[stock_id] = row
+                    last_close[stock_id] = row["close"]
 
-            # --- 賣出：檢查持有部位中有 signal=-1 的 ---
+            # --- 賣出：依出場規則（None 時退回 signal=-1）---
             for stock_id in list(positions.keys()):
                 if stock_id not in daily_info:
                     continue
                 row = daily_info[stock_id]
-                if row.get("signal", 0) == -1:
-                    pos = positions[stock_id]
-                    price = row["close"]
+                pos = positions[stock_id]
+                price = row["close"]
+
+                # 更新峰值價（移動停損用）
+                if price > pos.get("peak_price", 0):
+                    pos["peak_price"] = price
+
+                if self.exit_rule is not None:
+                    holding_td = idx - pos.get("entry_idx", idx)
+                    atr_val = row.get("ATR", None)
+                    atr_val = (
+                        float(atr_val)
+                        if atr_val is not None and pd.notna(atr_val)
+                        else None
+                    )
+                    neg_votes = int(row.get("_neg_votes", 0) or 0)
+                    should_sell, exit_reason = self.exit_rule.should_exit(
+                        entry_price=pos["entry_price"],
+                        close=price,
+                        peak_price=pos["peak_price"],
+                        holding_days=holding_td,
+                        atr=atr_val,
+                        neg_votes=neg_votes,
+                    )
+                else:
+                    should_sell = row.get("signal", 0) == -1
+                    exit_reason = "signal"
+
+                if should_sell:
                     avg_vol = row.get("_avg_vol_20", 0)
                     avg_vol = avg_vol if pd.notna(avg_vol) else 0
 
@@ -162,11 +212,9 @@ class MultiStockBacktester:
                     pnl = proceeds - cost_basis
                     pnl_pct = pnl / cost_basis if cost_basis > 0 else 0
 
-                    holding_days = (
-                        (date - pos["entry_date"]).days
-                        if pos["entry_date"]
-                        else 0
-                    )
+                    # 以交易日計（與出場規則的 holding_days 一致），
+                    # 避免 avg_holding_days 指標被日曆日高估（time_stop=20 → ~28 日曆日）。
+                    holding_days = idx - pos.get("entry_idx", idx)
 
                     trades.append({
                         "stock_id": stock_id,
@@ -178,6 +226,7 @@ class MultiStockBacktester:
                         "pnl": round(pnl, 0),
                         "pnl_pct": round(pnl_pct * 100, 2),
                         "holding_days": holding_days,
+                        "exit_reason": exit_reason,
                     })
 
                     capital += proceeds
@@ -245,13 +294,16 @@ class MultiStockBacktester:
                                     "shares": shares,
                                     "entry_price": buy_price,
                                     "entry_date": date,
+                                    "entry_idx": idx,
+                                    "peak_price": buy_price,
                                 }
 
             # --- 計算當日權益 ---
+            # 部位估值：當日無 bar（資料缺漏/不同上市日）時沿用最後已知收盤價，
+            # 避免持有部位被當成 0 估值而造成權益曲線假性崩跌。
             position_value = sum(
-                pos["shares"] * daily_info[sid]["close"]
+                pos["shares"] * last_close.get(sid, pos["entry_price"])
                 for sid, pos in positions.items()
-                if sid in daily_info
             )
             equity = capital + position_value
             equity_history.append({"date": date, "equity": equity})

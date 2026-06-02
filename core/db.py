@@ -32,6 +32,7 @@ VALID_TABLES = frozenset({
     "paper_trades",             # Paper Trading 交易記錄
     "paper_daily_pnl",          # Paper Trading 每日損益
     "strategy_tournament_results",  # 策略淘汰賽結果
+    "tracked_positions",        # 選股持倉追蹤（進場挑選 + 出場訊號）
 })
 
 
@@ -178,6 +179,7 @@ _NO_WARRANT_FILTER_TABLES = frozenset({
     "total_return_index", "stock_delisting", "securities_trader_info",
     "paper_portfolio", "paper_trades", "paper_daily_pnl",
     "strategy_tournament_results",
+    "tracked_positions",  # 標的已由選股器上游過濾，不需再過濾權證
 })
 
 

@@ -34,6 +34,7 @@ trap "rm -f $ENV_FILE" EXIT
 cat > "$ENV_FILE" <<EOF
 DB_POOL_SIZE: "3"
 DB_POOL_OVERFLOW: "2"
+RECOMMENDATION_DB_SOURCE: "supabase"
 EOF
 
 # 敏感值（SUPABASE_URL, FRED_API_KEY）由 Secret Manager 注入

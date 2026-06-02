@@ -1,6 +1,6 @@
 # Stock Analysis - 台灣股市量化交易系統
 
-> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（26 個內建策略、12 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
+> 台灣股市全方位量化交易系統：自動撈取價格（日/週/月K）、籌碼、財報、估值等資料，儲存至 Supabase PostgreSQL，搭配 Streamlit 量化分析平台（26 個內建策略、14 個分析頁面）進行回測、因子分析、產業輪動、事件研究與機器學習選股。支援 Cloud Run 雙服務部署（Pipeline Job + Analysis Service）。
 
 ## 功能
 
@@ -16,7 +16,7 @@
 - [x] 統一日誌系統（RotatingFileHandler + console 輸出）
 - [x] 本地 SQLite 索引，per-dataset 斷點續傳 + 失敗記錄
 
-### 量化分析平台（Streamlit，12 個頁面）
+### 量化分析平台（Streamlit，14 個頁面）
 - [x] 個股分析（K 線、技術指標、籌碼、基本面、同業比較，支援日/週/月K切換）
 - [x] 多維度因子篩選選股
 - [x] 26 個內建交易策略 + 績效報告
@@ -29,9 +29,11 @@
 - [x] 事件研究（除息/財報事件 CAR/AAR 分析 + 事件策略回測）
 - [x] 機器學習選股（LightGBM + Walk-Forward 回測）
 - [x] 報告瀏覽（Markdown 渲染 + CSV 表格 + 下載）
+- [x] 推薦追蹤（推薦命中率、策略拆分、排名 vs 績效、時間趨勢）
+- [x] 持倉追蹤（從 Top 20 挑選買入 → 追蹤 → 出場訊號；出場規則經全市場回測選出）
 
 ### 每日選股報告
-- [x] 多策略投票 + 流動性過濾（11 個策略加權評分）
+- [x] 多策略投票 + 流動性過濾（26 策略中經回測篩選的 11 個加權評分，詳見 `CLAUDE.md` 的「選股器策略選用」）
 - [x] 同業百分位排名（PER、營收成長、法人買超）
 - [x] 產業分佈摘要（雙層：sector → sub_industry）
 - [x] Email 自動推送（Gmail SMTP + .md 附件）
@@ -175,7 +177,7 @@ Stock_analysis/
 │   └── daily_updater.py           # 每日批量更新（< 1 分鐘）
 ├── analysis/                      # 量化分析平台（Streamlit）
 │   ├── app.py                     # Streamlit 主入口
-│   ├── pages/                     # 12 個分析頁面
+│   ├── pages/                     # 14 個分析頁面
 │   │   ├── 1_個股分析.py          # K 線、指標、籌碼、基本面、同業比較
 │   │   ├── 2_因子篩選.py          # 多維度條件過濾選股
 │   │   ├── 3_策略回測.py          # 23 策略 + 績效報告

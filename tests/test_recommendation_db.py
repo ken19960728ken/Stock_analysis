@@ -29,9 +29,63 @@ from analysis.utils.recommendation_db import (
     load_performance_summary,
     load_strategy_breakdown,
     load_version_timeline,
+    load_open_positions,
+    load_tracked_positions,
     _normalize_jsonb,
     _SQLITE_PATH,
 )
+
+
+@pytest.fixture
+def tracked_db(tmp_path):
+    """建立臨時 SQLite tracked_positions 並注入 open/closed 測試資料"""
+    db_path = tmp_path / "tracked.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE tracked_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_date DATE, stock_id TEXT, stock_name TEXT,
+            entry_date DATE, entry_price FLOAT, status TEXT,
+            current_price FLOAT, peak_price FLOAT, holding_days INT,
+            unrealized_pnl_pct FLOAT, exit_date DATE, exit_price FLOAT,
+            exit_reason TEXT, realized_pnl_pct FLOAT, exit_rule_config TEXT,
+            total_score FLOAT, agree_count INT
+        )
+    """)
+    cfg = json.dumps({"exit": "TimeStopExit(max_hold_days=20)"})
+    conn.executemany(
+        "INSERT INTO tracked_positions (report_date, stock_id, stock_name, "
+        "entry_date, entry_price, status, current_price, peak_price, "
+        "holding_days, unrealized_pnl_pct, exit_date, exit_price, exit_reason, "
+        "realized_pnl_pct, exit_rule_config) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("2026-05-01", "2330", "台積電", "2026-05-01", 900.0, "open",
+             950.0, 960.0, 10, 5.56, None, None, None, None, cfg),
+            ("2026-05-03", "2317", "鴻海", "2026-05-03", 200.0, "closed",
+             184.0, 205.0, 8, -8.0, "2026-05-14", 184.0, "stop_loss", -8.0, cfg),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+class TestTrackedPositions:
+    def test_load_all(self, tracked_db):
+        with patch("analysis.utils.recommendation_db._SQLITE_PATH", tracked_db):
+            df = load_tracked_positions()
+        assert len(df) == 2
+
+    def test_load_open_only(self, tracked_db):
+        with patch("analysis.utils.recommendation_db._SQLITE_PATH", tracked_db):
+            df = load_open_positions()
+        assert len(df) == 1
+        assert df.iloc[0]["stock_id"] == "2330"
+
+    def test_exit_rule_config_normalized(self, tracked_db):
+        with patch("analysis.utils.recommendation_db._SQLITE_PATH", tracked_db):
+            df = load_tracked_positions()
+        assert isinstance(df.iloc[0]["exit_rule_config"], dict)
 
 
 @pytest.fixture

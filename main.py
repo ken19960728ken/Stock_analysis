@@ -254,13 +254,28 @@ def run_daily_report():
         except Exception as e:
             logger.error(f"績效回填失敗（不影響報告）: {e}")
 
-        # 4. 產出績效追蹤報告
+        # 3.5 持倉追蹤 + 出場訊號（從今日 Top 20 挑買入、追蹤、產出場訊號）
+        tracking_section = ""
+        try:
+            from scripts.position_tracker import (
+                format_tracking_section,
+                run_position_tracking,
+            )
+            tracking_summary = run_position_tracking()
+            tracking_section = format_tracking_section(tracking_summary)
+        except Exception as e:
+            logger.error(f"持倉追蹤失敗（不影響報告）: {e}")
+
+        # 4. 產出績效追蹤報告（併入持倉與出場訊號）
         perf_report_path = None
         try:
             generate_performance_report()
             perf_report_path = str(Path(__file__).resolve().parent / "reports" / "performance_tracking.md")
             if not Path(perf_report_path).exists():
                 perf_report_path = None
+            elif tracking_section:
+                with open(perf_report_path, "a", encoding="utf-8") as f:
+                    f.write("\n" + tracking_section)
         except Exception as e:
             logger.error(f"績效追蹤報告產出失敗（不影響報告）: {e}")
 
@@ -337,6 +352,11 @@ def main():
         "--daily-fundamental",
         action="store_true",
         help="季報增量更新（季報公布月自動執行，--force 可跳過月份檢查）",
+    )
+    parser.add_argument(
+        "--track-positions",
+        action="store_true",
+        help="持倉追蹤：從 Top 20 挑選買入、追蹤、產生出場訊號（手動/補跑）",
     )
     parser.add_argument(
         "--dashboard",
@@ -511,6 +531,13 @@ def main():
     # --daily-fundamental：季報增量更新
     if args.daily_fundamental:
         run_daily_fundamental()
+        return
+
+    # --track-positions：持倉追蹤 + 出場訊號（手動/補跑）
+    if args.track_positions:
+        from scripts.position_tracker import format_tracking_section, run_position_tracking
+        summary = run_position_tracking()
+        print(format_tracking_section(summary))
         return
 
     # --daily：向後相容，資料抓取 + 選股報告
