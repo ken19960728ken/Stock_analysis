@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-03
+
 ### Added
 - **持倉追蹤 + 出場規則系統**：把無狀態的 Top 20 推薦變成可執行的持倉組合（進場挑選 → 追蹤 → 出場訊號）
   - `analysis/utils/exit_rules.py` — 可插拔出場規則（`TimeStopExit` 時間停損 / `PriceStopExit` 停利停損/ATR 移動停損 / `CompositeExit` 先觸發者先出 / `StrategyVoteExit` 出場投票），純量介面、回測與線上共用同一份規則
