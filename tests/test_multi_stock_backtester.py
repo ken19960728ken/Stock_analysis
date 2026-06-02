@@ -6,6 +6,11 @@ import pytest
 from datetime import date, timedelta
 
 from analysis.strategies.base import Strategy
+from analysis.utils.exit_rules import (
+    CompositeExit,
+    PriceStopExit,
+    TimeStopExit,
+)
 from analysis.utils.multi_stock_backtester import (
     MultiStockBacktester,
     MultiStockResult,
@@ -217,3 +222,109 @@ class TestMultiStockBacktester:
         assert result.equity_curve.iloc[0] == pytest.approx(
             10_000_000, rel=0.01
         )
+
+
+# ---------------------------------------------------------------------------
+# 出場規則注入
+# ---------------------------------------------------------------------------
+class ScriptedStrategy(Strategy):
+    """測試用：在指定 index 發出 +1，可選在另一 index 發出 -1。"""
+    name = "Scripted"
+    params: dict = {}
+
+    def __init__(self, buy_idx, sell_idx=None):
+        super().__init__()
+        self.buy_idx = buy_idx
+        self.sell_idx = sell_idx
+
+    def generate_signals(self, data):
+        df = data.copy()
+        df["signal"] = 0
+        col = df.columns.get_loc("signal")
+        df.iloc[self.buy_idx, col] = 1
+        if self.sell_idx is not None:
+            df.iloc[self.sell_idx, col] = -1
+        return df
+
+
+def _scripted_data(closes, volume=1_000_000, start="2024-01-01"):
+    n = len(closes)
+    dates = pd.bdate_range(start, periods=n)
+    df = pd.DataFrame({
+        "date": dates,
+        "open": closes,
+        "high": [c * 1.005 for c in closes],
+        "low": [c * 0.995 for c in closes],
+        "close": closes,
+        "volume": [volume] * n,
+    })
+    df["stock_id"] = "TEST"
+    return df
+
+
+class TestExitRuleInjection:
+    def test_none_reproduces_signal_exit(self):
+        """回歸護欄：exit_rule=None → 仍依 signal=-1 出場，reason=signal。"""
+        closes = [100.0] * 40
+        data = {"TEST": _scripted_data(closes)}
+        bt = MultiStockBacktester(
+            strategy=ScriptedStrategy(buy_idx=5, sell_idx=30),
+            exit_rule=None,
+        )
+        result = bt.run(data)
+        assert result.trade_count == 1
+        assert result.trades.iloc[0]["exit_reason"] == "signal"
+        # 出場日約在 sell 訊號 shift 後（idx 31 附近）
+        assert result.trades.iloc[0]["holding_days"] > 20
+
+    def test_time_stop_forces_exit(self):
+        """TimeStopExit：無 -1 訊號也會在固定交易日數出場。"""
+        closes = [100.0] * 40
+        data = {"TEST": _scripted_data(closes)}
+        bt = MultiStockBacktester(
+            strategy=ScriptedStrategy(buy_idx=5, sell_idx=None),
+            exit_rule=TimeStopExit(max_hold_days=3),
+        )
+        result = bt.run(data)
+        assert result.trade_count == 1
+        assert result.trades.iloc[0]["exit_reason"] == "time_stop"
+
+    def test_price_stop_loss_triggers(self):
+        """PriceStopExit：進場後跌破 -8% 觸發停損。"""
+        # 進場前平盤，idx 5 買（shift 後 idx 6 進場 @100），idx 10 起暴跌
+        closes = [100.0] * 10 + [85.0] * 10  # -15%
+        data = {"TEST": _scripted_data(closes)}
+        bt = MultiStockBacktester(
+            strategy=ScriptedStrategy(buy_idx=5, sell_idx=None),
+            exit_rule=PriceStopExit(stop_loss_pct=0.08),
+        )
+        result = bt.run(data)
+        assert result.trade_count == 1
+        assert result.trades.iloc[0]["exit_reason"] == "stop_loss"
+
+    def test_take_profit_triggers(self):
+        """PriceStopExit：進場後漲過 +15% 觸發停利。"""
+        closes = [100.0] * 10 + [130.0] * 10  # +30%
+        data = {"TEST": _scripted_data(closes)}
+        bt = MultiStockBacktester(
+            strategy=ScriptedStrategy(buy_idx=5, sell_idx=None),
+            exit_rule=PriceStopExit(take_profit_pct=0.15),
+        )
+        result = bt.run(data)
+        assert result.trade_count == 1
+        assert result.trades.iloc[0]["exit_reason"] == "take_profit"
+
+    def test_composite_first_trigger_wins(self):
+        """CompositeExit：停損先於時間停損觸發時，reason=stop_loss。"""
+        closes = [100.0] * 10 + [85.0] * 30
+        data = {"TEST": _scripted_data(closes)}
+        bt = MultiStockBacktester(
+            strategy=ScriptedStrategy(buy_idx=5, sell_idx=None),
+            exit_rule=CompositeExit(rules=(
+                TimeStopExit(max_hold_days=20),
+                PriceStopExit(stop_loss_pct=0.08),
+            )),
+        )
+        result = bt.run(data)
+        assert result.trade_count == 1
+        assert result.trades.iloc[0]["exit_reason"] == "stop_loss"

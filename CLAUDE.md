@@ -76,6 +76,12 @@ uv run python scripts/performance_tracker.py                  # 回填績效 + �
 uv run python scripts/performance_tracker.py --backfill-only  # 僅回填
 uv run python scripts/performance_tracker.py --report-only    # 僅產報告
 
+# === 持倉追蹤 + 出場規則 ===
+uv run python main.py --track-positions                       # 持倉追蹤：從 Top 20 挑買入 + 追蹤 + 出場訊號
+uv run python scripts/position_tracker.py --date 2026-05-28   # 指定報告日（手動/補跑）
+uv run python scripts/exit_rule_backtest.py --years 3 --universe-top 200  # 出場規則全市場掃描
+uv run python scripts/exit_rule_backtest.py --stocks 2330 2317 --quick    # 粗掃 smoke
+
 # === 單獨執行 scanner（支援 --test 單支測試） ===
 uv run python -m scanners.price_scanner                 # 全市場日K
 uv run python -m scanners.price_scanner_weekly           # 全市場週K
@@ -132,11 +138,14 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `analysis/pages/11_機器學習.py` | LightGBM 選股 + Walk-Forward 回測 |
 | `analysis/pages/12_報告瀏覽.py` | 瀏覽 reports/ 報告（Markdown 渲染 + CSV 表格 + 下載） |
 | `analysis/pages/13_推薦追蹤.py` | 推薦命中率儀表板（整體勝率、策略拆分、排名 vs 績效、時間趨勢） |
+| `analysis/pages/14_持倉追蹤.py` | 持倉追蹤儀表板（持有中部位未實現損益 + 已平倉出場原因分佈/已實現損益） |
 | `analysis/strategies/` | 26 個策略 (Strategy Pattern)，見下方策略清單 |
 | `analysis/utils/data_loader.py` | 統一 DB 查詢 + `@st.cache_data` |
 | `analysis/utils/indicators.py` | 純 pandas/numpy 技術指標 |
 | `analysis/utils/charts.py` | Plotly 圖表工廠 |
 | `analysis/utils/backtester.py` | 回測引擎（含台灣手續費/稅） |
+| `analysis/utils/multi_stock_backtester.py` | 多股組合回測引擎（一策略×多股×資金分配，支援可插拔 `exit_rule`） |
+| `analysis/utils/exit_rules.py` | 可插拔出場規則（時間停損/停利停損/ATR 移動停損/出場投票 + 選法常數，回測與線上共用） |
 | `analysis/utils/portfolio_backtester.py` | 多策略組合回測引擎 |
 | `analysis/utils/portfolio_optimizer.py` | 4 種組合最佳化（Max Sharpe/Min Vol/Risk Parity/BL） |
 | `analysis/utils/factor_engine.py` | 多因子評分引擎 + 滾動 IC |
@@ -246,6 +255,8 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `paper_trader.py` | Paper Trading 核心引擎（訊號掃描 + 組合構建 + 模擬交易 + 風控） |
 | `paper_risk_control.py` | Paper Trading 風控模組（部位限制 + 回撤熔斷 + 策略暫停） |
 | `paper_report.py` | Paper Trading 報告（日報 + 週報 + 告警 Email） |
+| `exit_rule_backtest.py` | 出場規則回測掃描（選股器進場代理 + 選法×出場規則網格 + 0050 對比 → `reports/exit_rule_sweep_*.csv/html`） |
+| `position_tracker.py` | 持倉追蹤（從 Top 20 挑買入 → 追蹤 → 沿價格路徑重播 `ExitRule` 產生出場訊號，寫入 `tracked_positions`） |
 
 ### Scanner 模組 `scanners/`
 
@@ -288,6 +299,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `paper_trades` | Paper Trading 交易記錄（只增不改） | `(trade_date, stock_id, side, shares)` |
 | `paper_daily_pnl` | Paper Trading 每日損益 + 風控狀態 | `(trade_date)` |
 | `strategy_tournament_results` | 策略淘汰賽結果快取 | `(run_date, strategy_name)` |
+| `tracked_positions` | 持倉追蹤（進場挑選 + 出場訊號生命週期，open/closed） | `(report_date, stock_id)` |
 
 ### Tests `tests/`
 
@@ -347,6 +359,10 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 | `test_paper_risk_control.py` | Paper Trading 風控測試（6 項約束、回撤熔斷、策略暫停，23 項） |
 | `test_paper_trader.py` | Paper Trading 引擎測試（訂單生成、模擬執行、滑價計算，15 項） |
 | `test_paper_report.py` | Paper Trading 報告測試（格式化、週末判斷、告警發送，13 項） |
+| `test_exit_rules.py` | 出場規則測試（時間停損/停利停損/移動停損/出場投票/CompositeExit/冠軍預設，39 項） |
+| `test_multi_stock_backtester.py` | 多股組合回測測試（含 `exit_rule` 注入回歸護欄 + 出場規則整合） |
+| `test_exit_rule_backtest.py` | 出場規則回測 harness 測試（網格、composite 聚合、進場代理、composite→backtester，8 項） |
+| `test_position_tracker.py` | 持倉追蹤測試（選法、出場重播、開倉冪等、出場訊號格式化，16 項） |
 
 ### Configuration
 
@@ -370,7 +386,7 @@ Run tests: `uv run pytest tests/ -v`. No linter is configured.
 - Supabase 連線自動偵測 Supavisor transaction mode (port 6543) 並切換為 session mode (port 5432)，避免 ~60 秒連線超時。`save_to_db()` 含連線錯誤自動重試。
 - **所有 DB 讀取必須使用 `safe_read_sql(sql, params=)`**（`core/db.py`），禁止直接 `pd.read_sql(sql, engine)`。後者在 SQLAlchemy 2.x 下不會歸還連線，導致 `idle in transaction` 殭屍連線佔滿連線池。
 - 所有資料表皆有 Unique Index，確保 `INSERT ... ON CONFLICT DO NOTHING` 正確跳過重複資料。DB 重建後需執行 `uv run python scripts/db_add_constraints.py` 重建約束。
-- **Cloud Run 四 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + Email 推送；`stock-paper-trading`（`--paper-trading`，18:50 UTC+8）負責 Paper Trading 模擬交易 + 風控 + 報告；`stock-fundamental`（`--daily-fundamental`，19:00 UTC+8，僅 2/3/5/8/11 月）負責季報增量更新，以 DB 差集策略逐股抓取缺漏季報（timeout 7200s）。前三者每日排程，季報更新僅在公布月排程。`--daily` 為向後相容旗標，依序執行資料抓取 + 選股報告。交易日判斷使用 TWSE 官方開休市行事曆 API。
+- **Cloud Run 四 Job 架構**：`stock-data`（`--daily-data`，18:30 UTC+8）負責價格 + 籌碼 + 估值面抓取；`stock-report`（`--daily-report`，18:40 UTC+8）負責選股報告 + 績效回填 + **持倉追蹤/出場訊號**（`run_position_tracking`，從同一進程剛寫入的 Top 20 挑買入並產生出場訊號，併入績效追蹤 Email）+ Email 推送；`stock-paper-trading`（`--paper-trading`，18:50 UTC+8）負責 Paper Trading 模擬交易 + 風控 + 報告；`stock-fundamental`（`--daily-fundamental`，19:00 UTC+8，僅 2/3/5/8/11 月）負責季報增量更新，以 DB 差集策略逐股抓取缺漏季報（timeout 7200s）。前三者每日排程，季報更新僅在公布月排程。`--daily` 為向後相容旗標，依序執行資料抓取 + 選股報告。交易日判斷使用 TWSE 官方開休市行事曆 API。
 - 每日排程由 Cloud Scheduler 觸發（18:30 / 18:40 UTC+8），`--daily-data` 和 `--daily-report` 各自執行完即退出。報告日期預設取 DB 中 `MAX(date) FROM daily_price`，可用 `--pick-date` / `--date` 指定歷史日期（會自動加 `end_date` 過濾避免未來資料洩漏）。
 - `--pick-stocks` 單獨執行只產報告不寄信；`--daily-report` 會自動寄信。手動補產報告後可用 `--daily-report` 或另外呼叫 `send_report_email()` 寄送。
 

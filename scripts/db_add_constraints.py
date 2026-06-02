@@ -45,6 +45,7 @@ CONSTRAINTS = [
     ("dividend_history", "uq_dividend_history", "stock_id, date, dividend"),
     ("industry_classification", "uq_industry_classification", "stock_id"),
     ("recommendation_history", "uq_recommendation_history", "report_date, stock_id"),
+    ("tracked_positions", "uq_tracked_positions", "report_date, stock_id"),
     ("scanner_run_log", "uq_scanner_run_log", "run_date, scanner_name, started_at"),
     ("day_trading", "uq_day_trading", "stock_id, date"),
     ("dividend_result", "uq_dividend_result", "stock_id, date"),
